@@ -27,7 +27,7 @@ REPEAT
 ```
 
 `OPCODE` include code of command (list read below).
-Numbers of `ARG` depends on `OPCODE`.
+`ARG` are list of arguments for `OPCODE`, attribute `name` contains name of argument (not value!).
 `RESULT` will contains result of command after execute. When you write command, put `RESULT` empty (or skip this tag).
 
 ### List of `OPCODE` with description their functions and `ARG` syntax:

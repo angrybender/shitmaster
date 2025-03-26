@@ -11,6 +11,7 @@ load_dotenv()
 API_URL = os.getenv('OPENAI_API_URL')
 API_KEY = os.getenv('OPENAI_API_KEY')
 MODEL = os.getenv('MODEL')
+MAX_PROMPT_OUTPUT = int(os.getenv('MAX_PROMPT_OUTPUT'))
 
 
 def llm_query(messages, tags=None) -> dict|None:
@@ -35,7 +36,7 @@ def llm_query(messages, tags=None) -> dict|None:
             response = client.chat.completions.create(
                 messages=messages,
                 model=MODEL,
-                max_tokens=4_000,
+                max_tokens=MAX_PROMPT_OUTPUT,
                 temperature=temperature
             )
 
