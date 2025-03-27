@@ -11,6 +11,7 @@ load_dotenv()
 API_URL = os.getenv('OPENAI_API_URL')
 API_KEY = os.getenv('OPENAI_API_KEY')
 MODEL = os.getenv('MODEL')
+LLM_TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', 0.0))
 MAX_PROMPT_OUTPUT = int(os.getenv('MAX_PROMPT_OUTPUT'))
 
 
@@ -29,7 +30,6 @@ def llm_query(messages, tags=None) -> dict|None:
         ]
 
     attempts = 5
-    temperature = 0.0
     response = None
     for attempt in range(attempts):
         try:
@@ -37,12 +37,11 @@ def llm_query(messages, tags=None) -> dict|None:
                 messages=messages,
                 model=MODEL,
                 max_tokens=MAX_PROMPT_OUTPUT,
-                temperature=temperature
+                temperature=LLM_TEMPERATURE
             )
 
             content = response.choices[0].message.content.strip()
             if len(content) == 0:
-                temperature += 0.1
                 raise Exception("Empty response")
 
             output = parse_tags(content, tags)
