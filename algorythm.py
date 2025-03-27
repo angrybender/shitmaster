@@ -33,12 +33,16 @@ def _helper_command_create_output(command: dict) -> str:
     result = command['result']
     opcode = command['opcode']
 
+    plan = ""
+    if command['plan']:
+        plan = "\n<PLAN>" + "\n".join(command['plan']) + "</PLAN>"
+
     arguments_str = "    \n".join([f"<ARG>{arg}</ARG>" for arg in arguments])
 
-    return f"""<COMMAND>
+    return f"""<COMMAND>{plan}
     <OPCODE>{opcode}</OPCODE>
 {arguments_str}
-    <RESULT>{result}</RESULT>
+    <RESULT>\n{result}\n</RESULT>
 </COMMAND>"""
 
 
@@ -177,7 +181,7 @@ class Copilot:
                 'role': 'user',
                 'content': current_prompt
             }
-        ], ['COMMAND'])
+        ], ['COMMAND', 'PLAN'])
         self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
 
         result_commands = output.get('COMMAND', [])
@@ -185,12 +189,15 @@ class Copilot:
             self.output = [conversation.get_message("```Not commands (1), early stop```\n\n", role="assistant")]
             return False
 
+        work_plan = output.get('PLAN', [])
+
         executed_commands_idx = {}
         for command in self.executed_commands:
             _key = command['opcode'] + ":" + ":" + json.dumps(command['arguments'])
             executed_commands_idx[_key] = True
 
         result = {}
+        is_inc_step = True
         for command in result_commands:
             opcode = parse_tags(command, ['OPCODE']).get('OPCODE', ['empty'])[0]
             if opcode == 'empty':
@@ -213,7 +220,10 @@ class Copilot:
                 'opcode': opcode,
                 'arguments': arguments,
                 'result': result.get('result', ''),
+                'plan': work_plan,
             })
+
+            is_inc_step = opcode not in ['MESSAGE']
 
             break
 
@@ -229,7 +239,8 @@ class Copilot:
             self.output.append(conversation.get_message(result['result'] + " \n\n", role="assistant"))
 
 
-        self.argent_step += 1
+        if is_inc_step:
+            self.argent_step += 1
         return True
 
     def _init(self):
