@@ -33,12 +33,16 @@ def _helper_command_create_output(command: dict) -> str:
     result = command['result']
     opcode = command['opcode']
 
+    plan = ""
+    if command['plan']:
+        plan = "\n<PLAN>" + "\n".join(command['plan']) + "</PLAN>"
+
     arguments_str = "    \n".join([f"<ARG>{arg}</ARG>" for arg in arguments])
 
-    return f"""<COMMAND>
+    return f"""<COMMAND>{plan}
     <OPCODE>{opcode}</OPCODE>
 {arguments_str}
-    <RESULT>{result}</RESULT>
+    <RESULT>\n{result}\n</RESULT>
 </COMMAND>"""
 
 
@@ -85,9 +89,18 @@ class CommandInterpreter:
         else:
             method = 'create_new_file_with_text'
 
+        # trim wrapper
+        data = data.strip()
+        if re.match(r'^```[a-z]+\s', data):
+            data = re.sub(r'^```[a-z]+\s', '', data)
+        elif data[:3] == '```':
+            data = data[3:]
+
+        data = re.sub(r'```$', '', data)
+
         content = tool_call(self.mcp_host, method, {
             'pathInProject': file_path,
-            'text': data,
+            'text': data.strip(),
         })
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
@@ -134,6 +147,8 @@ class Copilot:
         self.executed_commands = []
         self.argent_step = 0
 
+        self.command_state = []
+
     def get_id(self):
         return self.conversation_id
 
@@ -146,91 +161,6 @@ class Copilot:
                 json.dump({
                     'executed_commands': []
                 }, f, ensure_ascii=False, indent=4)
-
-    def _run_llm_iteration(self) -> bool:
-        if self.argent_step >= self.MAX_STEP:
-            logger.warning("MAX_STEP exceed!")
-            self.output = [conversation.get_message("```MAX_STEP exceed!```\n\n", role="assistant")]
-            return False
-
-        current_open_file = ''
-        if self.manifest['current_open_file']:
-            current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
-
-        current_prompt = self.prompt.format(
-            project_description=self.manifest['description'],
-            current_file_open=current_open_file,
-            project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
-            instruction=self.instruction,
-            commands_prev_step="\n".join(
-                [_helper_command_create_output(_) for _ in self.executed_commands]
-            ),
-        )
-
-        self.log("============= PROMPT =============\n" + current_prompt, True)
-        output = llm_query([
-            {
-                'role': 'system',
-                'content': self.system_prompt
-            },
-            {
-                'role': 'user',
-                'content': current_prompt
-            }
-        ], ['COMMAND'])
-        self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
-
-        result_commands = output.get('COMMAND', [])
-        if not result_commands:
-            self.output = [conversation.get_message("```Not commands (1), early stop```\n\n", role="assistant")]
-            return False
-
-        executed_commands_idx = {}
-        for command in self.executed_commands:
-            _key = command['opcode'] + ":" + ":" + json.dumps(command['arguments'])
-            executed_commands_idx[_key] = True
-
-        result = {}
-        for command in result_commands:
-            opcode = parse_tags(command, ['OPCODE']).get('OPCODE', ['empty'])[0]
-            if opcode == 'empty':
-                continue
-
-            arguments = parse_tags(command, ['ARG'], True).get('ARG', [''])
-            _key = opcode + ":" + ":" + json.dumps(arguments)
-            if _key in executed_commands_idx:
-                continue
-
-            if opcode not in ['EXIT', 'MESSAGE']:
-                log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
-                self.output.append(
-                    conversation.get_message(f"```bash\n{log_str}\n``` \n",
-                                               role="assistant")
-                )
-
-            result = self.interpreter.execute(opcode, arguments)
-            self.executed_commands.append({
-                'opcode': opcode,
-                'arguments': arguments,
-                'result': result.get('result', ''),
-            })
-
-            break
-
-        if not result:
-            self.output = [conversation.get_message("Not commands (2), early stop\n\n", role="assistant")]
-            return False
-
-        if result.get('exit', False):
-            logger.info("Finished")
-            return False
-
-        if result.get('output', False):
-            self.output.append(conversation.get_message(result['result'] + " \n\n", role="assistant"))
-
-
-        self.argent_step += 1
-        return True
 
     def _init(self):
         if not self.prompt:
@@ -281,11 +211,10 @@ class Copilot:
 
         self.output = [
             conversation.get_message(f"```<CONSERVATION_ID>{self.conversation_id}</CONSERVATION_ID>```\n\n", "assistant"),
-            # conversation.get_message(f"```JSON\n{json.dumps(self.manifest, ensure_ascii=False, indent=4)}\n```\n\n",
-            #                          "assistant"),
         ]
 
         self.executed_commands = []
+        self.command_state = []
         self.argent_step = 1
         self.interpreter = CommandInterpreter(IDE_MCP_HOST)
 
@@ -308,24 +237,104 @@ class Copilot:
         with open('./conversations_log/log.log', "w", encoding='utf8') as f:
             f.write(str(datetime.datetime.now()) + "\n\n")
 
-        while True:
-            self.output = []
-            self._init()
-
-            result = self._run_llm_iteration()
+        self._init()
+        if self.output:
             yield from self.output
 
-            if not result:
-                self.log("run(): finished")
-                yield conversation.get_terminal()
-                return
+        yield from self._run_llm_iteration()
+        yield conversation.get_terminal()
 
-            self.log("run(): next step")
+    def _run_llm_iteration(self):
+        current_open_file = ''
+        if self.manifest['current_open_file']:
+            current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
 
+        self.argent_step = 1
+        while True:
+            if self.argent_step > self.MAX_STEP:
+                logger.warning("MAX_STEP exceed!")
+                yield conversation.get_message("```MAX_STEP exceed!```\n\n", role="assistant")
+                break
 
-        #logger.info(f"ID: {self.conversation_id}; STEP: {self.last_step}")
-        # logger.info("MANIFEST:")
-        # logger.info(self.manifest)
+            current_prompt = self.prompt.format(
+                project_description=self.manifest['description'],
+                current_file_open=current_open_file,
+                project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
+                instruction=self.instruction,
+                commands_prev_step="\n".join(
+                    [_helper_command_create_output(_) for _ in self.executed_commands]
+                ),
+            )
+
+            self.log("============= PROMPT =============\n" + current_prompt, True)
+            output = llm_query([
+                {
+                    'role': 'system',
+                    'content': self.system_prompt
+                },
+                {
+                    'role': 'user',
+                    'content': current_prompt
+                }
+            ], ['COMMAND', 'PLAN'])
+            self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
+
+            result_commands = output.get('COMMAND', [])
+            if not result_commands:
+                yield conversation.get_message("```Not commands (1), early stop```\n\n", role="assistant")
+                break
+
+            work_plan = output.get('PLAN', [])
+
+            executed_commands_idx = {}
+            for command in self.executed_commands:
+                _key = command['opcode'] + ":" + json.dumps(command['arguments'])
+                executed_commands_idx[_key] = True
+
+            current_opcode = ''
+            current_arguments = []
+            for command in result_commands:
+                opcode = parse_tags(command, ['OPCODE']).get('OPCODE', [''])[0]
+                if not opcode:
+                    continue
+
+                arguments = parse_tags(command, ['ARG'], True).get('ARG', [''])
+                _key = opcode + ":" + json.dumps(arguments)
+                if _key in executed_commands_idx:
+                    continue
+
+                current_opcode = opcode
+                current_arguments = arguments
+                if opcode not in ['EXIT', 'MESSAGE']:
+                    log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
+                    yield conversation.get_message(f"```bash\n{log_str}\n``` \n", role="assistant")
+
+                break
+
+            if not current_opcode:
+                yield conversation.get_message("Not commands (2), early stop\n\n", role="assistant")
+                break
+
+            result = self.interpreter.execute(current_opcode, current_arguments)
+            self.executed_commands.append({
+                'opcode': current_opcode,
+                'arguments': current_arguments,
+                'result': result.get('result', ''),
+                'plan': work_plan,
+            })
+            self.log("============= EXECUTE =============\n" + "OPCODE=" + current_opcode + "\n\nARG=" + "\nARG=".join(current_arguments) + "\n\nRESULT=" + result.get('result', ''), True)
+
+            is_inc_step = current_opcode not in ['MESSAGE']
+
+            if result.get('exit', False):
+                logger.info("Finished")
+                break
+
+            if result.get('output', False):
+                yield conversation.get_message(result['result'] + " \n\n", role="assistant")
+
+            if is_inc_step:
+                self.argent_step += 1
 
     def log(self, data, to_file=False):
         if type(data) is list or type(data) is dict:
