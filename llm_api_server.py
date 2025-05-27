@@ -1,19 +1,11 @@
-import json
 import time
-import re
 
 import logging
 logger = logging.getLogger('APP')
 logging.basicConfig(level=logging.INFO)
 
 import os
-from openai import OpenAI
 from dotenv import load_dotenv
-import conversation
-
-from typing import Optional, List, Dict
-
-from pydantic import BaseModel, Field
 
 import asyncio
 from starlette.responses import StreamingResponse
