@@ -10,6 +10,7 @@ import conversation
 from mcp_helper import tool_call
 from llm_parser import parse_tags
 from llm import llm_query
+from diff_helper import apply_patch, PatchError
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -105,22 +106,51 @@ class CommandInterpreter:
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
 
+    def _command_write_diff(self, file_path, data):
+        source_file = self._command_read(file_path)
+        if not source_file['exists']:
+            return {'result': "ERROR: file not exist"}
+
+        # with open('patched_file.py', 'w', encoding='utf8') as f:
+        #     f.write(source_file['result'])
+
+        source_code = source_file['result']
+        source_code = [_.rstrip() for _ in source_code.split("\n")]
+
+        try:
+            patched_file = apply_patch("\n".join(source_code), data)
+        except PatchError as e:
+            return {'result': f"ERROR: {e}"}
+
+        content = tool_call(self.mcp_host, 'replace_file_text_by_path', {
+            'pathInProject': file_path,
+            'text': patched_file.strip(),
+        })
+
+        return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
+
     def _command_message(self, data) -> dict:
         return {'result': data, 'output': True}
 
     def execute(self, opcode: str, arguments) -> dict:
-        if opcode == 'READ':
-            return self._command_read(*arguments)
-        elif opcode == 'LIST':
-            return self._command_list(*arguments)
-        elif opcode == 'WRITE':
-            return self._command_write(*arguments)
-        elif opcode == 'EXIT':
-            return {'exit': True}
-        elif opcode == 'MESSAGE':
-            return self._command_message(*arguments)
-        else:
-            raise Exception(f"Unknown opcode: {opcode}")
+
+        try:
+            if opcode == 'READ' or opcode == 'RE_READ':
+                return self._command_read(*arguments)
+            elif opcode == 'LIST':
+                return self._command_list(*arguments)
+            elif opcode == 'WRITE':
+                return self._command_write(*arguments)
+            elif opcode == 'WRITE_DIFF':
+                return self._command_write_diff(*arguments)
+            elif opcode == 'EXIT':
+                return {'exit': True}
+            elif opcode == 'MESSAGE':
+                return self._command_message(*arguments)
+            else:
+                raise Exception(f"Unknown opcode: {opcode}")
+        except TypeError:
+            return {"result": "ERROR: wrong command code/arguments, check you output, fix considering DSL and try again"}
 
 
 class Copilot:
@@ -300,7 +330,7 @@ class Copilot:
 
                 arguments = parse_tags(command, ['ARG'], True).get('ARG', [''])
                 _key = opcode + ":" + json.dumps(arguments)
-                if _key in executed_commands_idx:
+                if opcode != 'RE_READ' and _key in executed_commands_idx:
                     continue
 
                 current_opcode = opcode
