@@ -111,9 +111,6 @@ class CommandInterpreter:
         if not source_file['exists']:
             return {'result': "ERROR: file not exist"}
 
-        # with open('patched_file.py', 'w', encoding='utf8') as f:
-        #     f.write(source_file['result'])
-
         source_code = source_file['result']
         source_code = [_.rstrip() for _ in source_code.split("\n")]
 
@@ -213,7 +210,7 @@ class Copilot:
         # first copilot's message contains conversation's id
         for messages in self.request['messages']:
             if messages['role'] == 'assistant':
-                _id = re.findall(r'^```<CONSERVATION_ID>(\d+\.\d+)</CONSERVATION_ID>```', messages['content'])
+                _id = re.findall(r'^```<CONVERSATION_ID>(\d+\.\d+)</CONVERSATION_ID>```', messages['content'])
                 assert _id[0], 'Empty conversation_id'
                 self.conversation_id = _id[0]
                 break
@@ -240,7 +237,7 @@ class Copilot:
         }
 
         self.output = [
-            conversation.get_message(f"```<CONSERVATION_ID>{self.conversation_id}</CONSERVATION_ID>```\n\n", "assistant"),
+            conversation.get_message(f"<CONVERSATION_ID>{self.conversation_id}</CONVERSATION_ID>", "assistant", "info"),
         ]
 
         self.executed_commands = []
@@ -283,7 +280,7 @@ class Copilot:
         while True:
             if self.argent_step > self.MAX_STEP:
                 logger.warning("MAX_STEP exceed!")
-                yield conversation.get_message("```MAX_STEP exceed!```\n\n", role="assistant")
+                yield conversation.get_message("MAX_STEP exceed!", role="assistant", message_type="error")
                 break
 
             current_prompt = self.prompt.format(
@@ -311,7 +308,7 @@ class Copilot:
 
             result_commands = output.get('COMMAND', [])
             if not result_commands:
-                yield conversation.get_message("```Not commands (1), early stop```\n\n", role="assistant")
+                yield conversation.get_message("Not commands (1), early stop", role="assistant", message_type="error")
                 break
 
             work_plan = output.get('PLAN', [])
@@ -337,12 +334,12 @@ class Copilot:
                 current_arguments = arguments
                 if opcode not in ['EXIT', 'MESSAGE']:
                     log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
-                    yield conversation.get_message(f"```bash\n{log_str}\n``` \n", role="assistant")
+                    yield conversation.get_message(f"{log_str}", role="assistant", message_type="info")
 
                 break
 
             if not current_opcode:
-                yield conversation.get_message("Not commands (2), early stop\n\n", role="assistant")
+                yield conversation.get_message("Not commands (2), early stop", role="assistant", message_type="error")
                 break
 
             result = self.interpreter.execute(current_opcode, current_arguments)
@@ -361,7 +358,7 @@ class Copilot:
                 break
 
             if result.get('output', False):
-                yield conversation.get_message(result['result'] + " \n\n", role="assistant")
+                yield conversation.get_message(result['result'], role="assistant", message_type="markdown")
 
             if is_inc_step:
                 self.argent_step += 1

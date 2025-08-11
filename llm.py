@@ -37,6 +37,7 @@ def llm_query(messages, tags=None) -> dict|None:
 
     attempts = 5
     response = None
+    error = None
     for attempt in range(attempts):
         try:
             response = client.chat.completions.create(
@@ -55,7 +56,9 @@ def llm_query(messages, tags=None) -> dict|None:
 
             return output
         except Exception as e:
+            error = e
             print(f"Attempt {attempt + 1}: Unexpected error: {e}\nresponse:", response)
             time.sleep(1)
 
-    return None
+    if error:
+        raise error

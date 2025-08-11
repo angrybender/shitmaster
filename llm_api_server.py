@@ -1,53 +1,99 @@
+from flask import Flask, render_template, request, Response
+import json
 import time
+import queue
+import os
+from dotenv import load_dotenv
 
 import logging
 logger = logging.getLogger('APP')
 logging.basicConfig(level=logging.INFO)
 
-import os
-from dotenv import load_dotenv
-
-import asyncio
-from starlette.responses import StreamingResponse
-from fastapi import FastAPI, HTTPException, Request, Body
-
 from algorythm import Copilot
 
-app = FastAPI(title="OpenAI-compatible API")
+app = Flask(__name__)
 
-# Load environment variables from .env file
 load_dotenv()
 MODEL = os.getenv('MODEL')
 
-@app.post("/completions")
-async def chat_completions(request: dict = Body(...)):
-    raise Exception("not supported")
-    return {
-        "id": time.time(),
-        "object": "chat.completion",
-        "created": time.time(),
-        "model": request['model'],
-        "choices": [{"message": Message(role="assistant", content=None)}],
-    }
+# Global queue to store messages for SSE
+message_queue = queue.Queue()
 
-@app.post("/chat/completions")
-async def chat_completions(request: dict = Body(...)):
-    request['model'] = MODEL
+def process_task(user_request):
+    session = Copilot({'messages' : [{
+        'content': user_request,
+        'role': 'user',
+    }]})
 
-    session = Copilot(request)
+    logging.info('start session')
 
-    async def _emulator(stream):
-        for delta in stream:
-            await asyncio.sleep(0)
-            yield delta
-            await asyncio.sleep(0)
-
-    return StreamingResponse(
-        _emulator(session.run()), media_type="application/x-ndjson"
-    )
+    for message in session.run():
+        logger.info('iteration: ' + json.dumps(message))
+        yield f"data: {json.dumps(message)}\n\n"
 
 
-if __name__ == "__main__":
-    import uvicorn
+@app.route('/')
+def index():
+    return render_template('app.html')
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+
+        if not user_message:
+            return json.dumps({'status': 'error', 'message': 'Empty message'}), 400
+
+        # add message in task
+        message_queue.put({
+            'type': 'task',
+            'message': user_message,
+            'timestamp': time.time()
+        })
+
+        return json.dumps({'status': 'success'})
+
+    except Exception as e:
+        return json.dumps({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/events')
+def events():
+    def event_stream():
+        last_ping_time = time.time()
+        ping_time = 1
+
+        while True:
+            try:
+                # Wait for a message with timeout
+                message = message_queue.get(timeout=1)
+                if message['type'] == 'task':
+                    yield from process_task(message['message'])
+                else:
+                    raise Exception(f"unknown message type: {message['type']}")
+            except queue.Empty:
+                current_ping_time = time.time()
+                if current_ping_time - last_ping_time >= ping_time:
+                    # Send heartbeat to keep connection alive
+                    yield f"data: {json.dumps({'role': 'system', 'type': 'heartbeat'})}\n\n"
+                    last_ping_time = current_ping_time
+
+                    if ping_time == 1:
+                        ping_time = 30
+
+            except Exception as e:
+                yield f"data: {json.dumps({'role': 'system', 'type': 'error', 'message': str(e)})}\n\n"
+                break
+
+    return Response(event_stream(), mimetype='text/event-stream', headers={
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+    })
+
+
+if __name__ == '__main__':
+    app.run(debug=True, threaded=True)
