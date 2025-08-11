@@ -23,7 +23,8 @@ else:
 def llm_query(messages, tags=None) -> dict|None:
     client = OpenAI(
         api_key=API_KEY,
-        base_url=API_URL
+        base_url=API_URL,
+        timeout=1200
     )
 
     if type(messages) is str:
