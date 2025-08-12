@@ -165,14 +165,24 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         .status {
             padding: 5px 10px;
             border-radius: 3px;
-            font-size: 12px;
+            font-size: 70%;
             margin-bottom: 10px;
             text-align: center;
+        }
+        .status .project {
+            display: none;
         }
 
         .status.connected {
             background-color: #d4edda;
             color: #155724;
+        }
+
+        .status.connected .project {
+            display: inline;
+            font-weight: bold;
+            font-size: 12px;
+            font-size: 120%;
         }
 
         .status.disconnected {
@@ -229,7 +239,10 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 <body>
     <div class="chat-container">
         <div class="chat-header">
-            <div id="connection-status" class="status disconnected">Connecting...</div>
+            <div id="connection-status" class="status disconnected">
+                <span class="connection">Connecting...</span>
+                <span class="project"></span>
+            </div>
         </div>
 
         <div id="user-request"></div>
@@ -254,7 +267,6 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 this.messagesContainer = document.getElementById('chat-messages');
                 this.userMessage = document.getElementById('user-request');
                 this.messageInput = document.getElementById('message-input');
-                this.statusElement = document.getElementById('connection-status');
                 this.eventSource = null;
 
                 this.init();
@@ -315,6 +327,9 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 this.updateStatus('Connected', 'connected');
 
                 switch (data.type) {
+                    case 'status':
+                        this.updateProjectStatus(data.message);
+                        break;
                     case 'end':
                         this.addMessage(data.message, 'finished', data.timestamp);
                         break;
@@ -400,8 +415,12 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             }
 
             updateStatus(message, className) {
-                this.statusElement.textContent = message;
-                this.statusElement.className = `status ${className}`;
+                document.querySelector('#connection-status').className = `status ${className}`;
+                document.querySelector('#connection-status .connection').textContent = message;
+            }
+
+            updateProjectStatus(message) {
+                document.querySelector('#connection-status .project').textContent = message;
             }
         }
 

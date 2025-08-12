@@ -69,6 +69,14 @@ EVENTS_LOCK = threading.Lock()
 def _get_heartbeat():
     return f"data: {json.dumps({'role': 'system', 'type': 'heartbeat'})}\n\n"
 
+def _get_project_status():
+    copilot = Copilot({})
+    try:
+        manifest = copilot.get_manifest()
+        return f"data: {json.dumps({'role': 'system', 'type': 'status', 'message': manifest['path']})}\n\n"
+    except:
+        return f"data: {json.dumps({'role': 'system', 'type': 'status', 'message': 'unknown project'})}\n\n"
+
 def event_stream():
     """
     stream API must consume tasks mandatory
@@ -87,6 +95,8 @@ def event_stream():
     last_heartbeat_time = time.time()
     heartbeat_time = 30.0
     yield _get_heartbeat()
+    yield _get_project_status()
+
 
     while True:
         try:
@@ -103,6 +113,7 @@ def event_stream():
             now = time.time()
             if now - last_heartbeat_time >= heartbeat_time:
                 yield _get_heartbeat()
+                yield _get_project_status()
                 last_heartbeat_time = now
 
         except Exception as e:

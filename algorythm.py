@@ -189,6 +189,11 @@ class Copilot:
                     'executed_commands': []
                 }, f, ensure_ascii=False, indent=4)
 
+    def get_manifest(self):
+        _manifest_file = tool_call(IDE_MCP_HOST, 'get_file_text_by_path', {'pathInProject': './.copilot_project.xml'})[
+            'status']
+        return parse_tags(_manifest_file, ['path', 'description', 'mcp'])
+
     def _init(self):
         if not self.prompt:
             self.prompt = open('step_prompt.txt', 'r', encoding='utf8').read()
@@ -220,10 +225,7 @@ class Copilot:
 
         self.conversation_id = time.time()
 
-        _manifest_file = tool_call(IDE_MCP_HOST, 'get_file_text_by_path', {'pathInProject': './.copilot_project.xml'})[
-            'status']
-        manifest = parse_tags(_manifest_file, ['path', 'description', 'mcp'])
-
+        manifest = self.get_manifest()
         _project_base_path = manifest['path'][0].strip()
         _current_open_file = tool_call(IDE_MCP_HOST, 'get_open_in_editor_file_path')['status']
         if _current_open_file:
