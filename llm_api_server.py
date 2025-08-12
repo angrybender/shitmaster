@@ -25,10 +25,7 @@ def process_task(user_request):
         'role': 'user',
     }]})
 
-    logging.info('start session')
-
     for message in session.run():
-        logger.info('iteration: ' + json.dumps(message))
         yield f"data: {json.dumps(message)}\n\n"
 
 

@@ -104,32 +104,14 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         }
 
         .chat-messages {
-            border: 1px solid #ddd;
             margin-bottom: 20px;
             background-color: #fafafa;
-            border-radius: 5px;
-        }
-
-        .markdown-message {
-            border: 1px solid #ddd;
-            margin-bottom: 20px;
-            border-radius: 5px;
-        }
-        .markdown-message code {
-            font-size: 1.2em;
-        }
-        .markdown-message h2 {
-            font-size: 1.2em;
-        }
-        .markdown-message h1 {
-            font-size: 1.3em;
         }
 
         .message {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             padding: 10px;
             border-radius: 8px;
-            max-width: 80%;
         }
 
         .user-message {
@@ -204,9 +186,10 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         }
 
         .timestamp {
-            font-size: 11px;
+            font-size: 60%;
             opacity: 0.7;
             margin-top: 5px;
+            text-align: right;
         }
 
         #user-request {
@@ -217,7 +200,29 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             border-radius: 5px;
 
             font-family: monospace;
+            font-size: 120%;
             white-space: pre-wrap;
+        }
+
+        .markdown-message {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .markdown-message code {
+            font-size: 120%;
+        }
+        .markdown-message h2 {
+            font-size: 120%;
+        }
+        .markdown-message h1 {
+            font-size: 130%;
+        }
+        .markdown-message p {
+            margin-top: 0;
+        }
+
+        .finished-message {
+            background-color: #d4edda;
         }
     </style>
 </head>
@@ -311,7 +316,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 
                 switch (data.type) {
                     case 'end':
-                        this.addMessage(data.message, 'bot', data.timestamp);
+                        this.addMessage(data.message, 'finished', data.timestamp);
                         break;
                     case 'error':
                         this.addMessage(data.message, 'error', data.timestamp);
