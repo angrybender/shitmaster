@@ -239,7 +239,8 @@ class Copilot:
         }
 
         self.output = [
-            conversation.get_message(f"<CONVERSATION_ID>{self.conversation_id}</CONVERSATION_ID>", "assistant", "info"),
+            # @todo dialog feature
+            # conversation.get_message(f"<CONVERSATION_ID>{self.conversation_id}</CONVERSATION_ID>", "assistant", "info"),
         ]
 
         self.executed_commands = []
