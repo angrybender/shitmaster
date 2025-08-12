@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 import logging
 logger = logging.getLogger('APP')
-logging.basicConfig(level=logging.INFO)
 
 from algorythm import Copilot
 
@@ -15,6 +14,9 @@ app = Flask(__name__)
 
 load_dotenv()
 MODEL = os.getenv('MODEL')
+IS_DEBUG = int(os.environ.get('DEBUG', 0))
+
+logging.basicConfig(level=logging.DEBUG if IS_DEBUG else logging.INFO)
 
 # Global queue to store messages for SSE
 message_queue = queue.Queue()
@@ -31,7 +33,11 @@ def process_task(user_request):
 
 @app.route('/')
 def index():
-    return render_template('app.html')
+    return Response(render_template('app.html'), mimetype='text/html', headers={
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*'
+    })
 
 
 @app.route('/send_message', methods=['POST'])
@@ -91,6 +97,6 @@ def events():
         'Access-Control-Allow-Origin': '*'
     })
 
-
 if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
+    is_debug = int(os.environ.get('DEBUG', 0))
+    app.run(debug=is_debug==1)
