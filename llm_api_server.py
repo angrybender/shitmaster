@@ -2,8 +2,9 @@ from flask import Flask, render_template, request, Response
 import json
 import time
 import queue
-import os
+import os, signal
 from dotenv import load_dotenv
+import threading
 
 import logging
 logger = logging.getLogger('APP')
@@ -14,9 +15,12 @@ app = Flask(__name__)
 
 load_dotenv()
 MODEL = os.getenv('MODEL')
-IS_DEBUG = int(os.environ.get('DEBUG', 0))
+IS_DEBUG = int(os.environ.get('DEBUG', 0)) == 1
 
-logging.basicConfig(level=logging.DEBUG if IS_DEBUG else logging.INFO)
+if IS_DEBUG:
+    logging.getLogger().setLevel(logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.INFO)
 
 # Global queue to store messages for SSE
 message_queue = queue.Queue()
@@ -54,42 +58,61 @@ def send_message():
             'type': 'task',
             'message': user_message,
             'timestamp': time.time()
-        })
+        }, timeout=10)
 
         return json.dumps({'status': 'success'})
 
     except Exception as e:
         return json.dumps({'status': 'error', 'message': str(e)}), 500
 
+EVENTS_LOCK = threading.Lock()
+def _get_heartbeat():
+    return f"data: {json.dumps({'role': 'system', 'type': 'heartbeat'})}\n\n"
+
+def event_stream():
+    """
+    stream API must consume tasks mandatory
+    :return:
+    """
+    locked = EVENTS_LOCK.acquire(timeout=1)
+    if not locked:
+        logger.debug('kill concurrent process')
+        message_queue.put({'type': 'kill'}, timeout=10)
+        locked = EVENTS_LOCK.acquire(timeout=10)
+
+    if not locked:
+        logger.error("system processes failure")
+        os.kill(os.getpid(), signal.SIGINT)
+
+    last_heartbeat_time = time.time()
+    heartbeat_time = 30.0
+    yield _get_heartbeat()
+
+    while True:
+        try:
+            # Wait for a message with timeout
+            message = message_queue.get(timeout=1)
+            if message['type'] == 'task':
+                yield from process_task(message['message'])
+            elif message['type'] == 'kill':
+                break
+            else:
+                raise Exception(f"unknown message type: {message['type']}")
+        except queue.Empty:
+            # Send heartbeat to keep connection alive
+            now = time.time()
+            if now - last_heartbeat_time >= heartbeat_time:
+                yield _get_heartbeat()
+                last_heartbeat_time = now
+
+        except Exception as e:
+            yield f"data: {json.dumps({'role': 'system', 'type': 'error', 'message': str(e)})}\n\n"
+            break
+
+    EVENTS_LOCK.release()
 
 @app.route('/events')
 def events():
-    def event_stream():
-        last_ping_time = time.time()
-        ping_time = 1
-
-        while True:
-            try:
-                # Wait for a message with timeout
-                message = message_queue.get(timeout=1)
-                if message['type'] == 'task':
-                    yield from process_task(message['message'])
-                else:
-                    raise Exception(f"unknown message type: {message['type']}")
-            except queue.Empty:
-                current_ping_time = time.time()
-                if current_ping_time - last_ping_time >= ping_time:
-                    # Send heartbeat to keep connection alive
-                    yield f"data: {json.dumps({'role': 'system', 'type': 'heartbeat'})}\n\n"
-                    last_ping_time = current_ping_time
-
-                    if ping_time == 1:
-                        ping_time = 30
-
-            except Exception as e:
-                yield f"data: {json.dumps({'role': 'system', 'type': 'error', 'message': str(e)})}\n\n"
-                break
-
     return Response(event_stream(), mimetype='text/event-stream', headers={
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -98,5 +121,4 @@ def events():
     })
 
 if __name__ == '__main__':
-    is_debug = int(os.environ.get('DEBUG', 0))
-    app.run(debug=is_debug==1)
+    app.run(debug=IS_DEBUG)
