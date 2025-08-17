@@ -10,6 +10,7 @@ import conversation
 from mcp_helper import tool_call
 from llm_parser import parse_tags
 from llm import llm_query
+from diff_helper import apply_patch, PatchError
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -105,22 +106,48 @@ class CommandInterpreter:
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
 
+    def _command_write_diff(self, file_path, data):
+        source_file = self._command_read(file_path)
+        if not source_file['exists']:
+            return {'result': "ERROR: file not exist"}
+
+        source_code = source_file['result']
+        source_code = [_.rstrip() for _ in source_code.split("\n")]
+
+        try:
+            patched_file = apply_patch("\n".join(source_code), data)
+        except PatchError as e:
+            return {'result': f"ERROR: {e}"}
+
+        content = tool_call(self.mcp_host, 'replace_file_text_by_path', {
+            'pathInProject': file_path,
+            'text': patched_file.strip(),
+        })
+
+        return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
+
     def _command_message(self, data) -> dict:
         return {'result': data, 'output': True}
 
     def execute(self, opcode: str, arguments) -> dict:
-        if opcode == 'READ':
-            return self._command_read(*arguments)
-        elif opcode == 'LIST':
-            return self._command_list(*arguments)
-        elif opcode == 'WRITE':
-            return self._command_write(*arguments)
-        elif opcode == 'EXIT':
-            return {'exit': True}
-        elif opcode == 'MESSAGE':
-            return self._command_message(*arguments)
-        else:
-            raise Exception(f"Unknown opcode: {opcode}")
+
+        try:
+            if opcode == 'READ' or opcode == 'RE_READ':
+                return self._command_read(*arguments)
+            elif opcode == 'LIST':
+                return self._command_list(*arguments)
+            elif opcode == 'WRITE':
+                return self._command_write(*arguments)
+            elif opcode == 'WRITE_DIFF':
+                return self._command_write_diff(*arguments)
+            elif opcode == 'EXIT':
+                return {'exit': True}
+            elif opcode == 'MESSAGE':
+                return self._command_message(*arguments)
+            else:
+                raise Exception(f"Unknown opcode: {opcode}")
+        except TypeError:
+            return {"result": "ERROR: wrong command code/arguments, check you output, fix considering DSL and try again"}
 
 
 class Copilot:
@@ -162,6 +189,11 @@ class Copilot:
                     'executed_commands': []
                 }, f, ensure_ascii=False, indent=4)
 
+    def get_manifest(self):
+        _manifest_file = tool_call(IDE_MCP_HOST, 'get_file_text_by_path', {'pathInProject': './.copilot_project.xml'})[
+            'status']
+        return parse_tags(_manifest_file, ['path', 'description', 'mcp'])
+
     def _init(self):
         if not self.prompt:
             self.prompt = open('step_prompt.txt', 'r', encoding='utf8').read()
@@ -183,7 +215,7 @@ class Copilot:
         # first copilot's message contains conversation's id
         for messages in self.request['messages']:
             if messages['role'] == 'assistant':
-                _id = re.findall(r'^```<CONSERVATION_ID>(\d+\.\d+)</CONSERVATION_ID>```', messages['content'])
+                _id = re.findall(r'^```<CONVERSATION_ID>(\d+\.\d+)</CONVERSATION_ID>```', messages['content'])
                 assert _id[0], 'Empty conversation_id'
                 self.conversation_id = _id[0]
                 break
@@ -193,10 +225,7 @@ class Copilot:
 
         self.conversation_id = time.time()
 
-        _manifest_file = tool_call(IDE_MCP_HOST, 'get_file_text_by_path', {'pathInProject': './.copilot_project.xml'})[
-            'status']
-        manifest = parse_tags(_manifest_file, ['path', 'description', 'mcp'])
-
+        manifest = self.get_manifest()
         _project_base_path = manifest['path'][0].strip()
         _current_open_file = tool_call(IDE_MCP_HOST, 'get_open_in_editor_file_path')['status']
         if _current_open_file:
@@ -210,7 +239,8 @@ class Copilot:
         }
 
         self.output = [
-            conversation.get_message(f"```<CONSERVATION_ID>{self.conversation_id}</CONSERVATION_ID>```\n\n", "assistant"),
+            # @todo dialog feature
+            # conversation.get_message(f"<CONVERSATION_ID>{self.conversation_id}</CONVERSATION_ID>", "assistant", "info"),
         ]
 
         self.executed_commands = []
@@ -253,7 +283,7 @@ class Copilot:
         while True:
             if self.argent_step > self.MAX_STEP:
                 logger.warning("MAX_STEP exceed!")
-                yield conversation.get_message("```MAX_STEP exceed!```\n\n", role="assistant")
+                yield conversation.get_message("MAX_STEP exceed!", role="assistant", message_type="error")
                 break
 
             current_prompt = self.prompt.format(
@@ -281,7 +311,7 @@ class Copilot:
 
             result_commands = output.get('COMMAND', [])
             if not result_commands:
-                yield conversation.get_message("```Not commands (1), early stop```\n\n", role="assistant")
+                yield conversation.get_message("Not commands (1), early stop", role="assistant", message_type="error")
                 break
 
             work_plan = output.get('PLAN', [])
@@ -300,19 +330,19 @@ class Copilot:
 
                 arguments = parse_tags(command, ['ARG'], True).get('ARG', [''])
                 _key = opcode + ":" + json.dumps(arguments)
-                if _key in executed_commands_idx:
+                if opcode != 'RE_READ' and _key in executed_commands_idx:
                     continue
 
                 current_opcode = opcode
                 current_arguments = arguments
                 if opcode not in ['EXIT', 'MESSAGE']:
                     log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
-                    yield conversation.get_message(f"```bash\n{log_str}\n``` \n", role="assistant")
+                    yield conversation.get_message(f"{log_str}", role="assistant", message_type="info")
 
                 break
 
             if not current_opcode:
-                yield conversation.get_message("Not commands (2), early stop\n\n", role="assistant")
+                yield conversation.get_message("Not commands (2), early stop", role="assistant", message_type="error")
                 break
 
             result = self.interpreter.execute(current_opcode, current_arguments)
@@ -331,7 +361,7 @@ class Copilot:
                 break
 
             if result.get('output', False):
-                yield conversation.get_message(result['result'] + " \n\n", role="assistant")
+                yield conversation.get_message(result['result'], role="assistant", message_type="markdown")
 
             if is_inc_step:
                 self.argent_step += 1
