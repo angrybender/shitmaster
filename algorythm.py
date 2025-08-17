@@ -1,16 +1,15 @@
 import json
-import re
 import os
 import glob
 import time
 import datetime
-from pathlib import Path
 
 import conversation
 from mcp_helper import tool_call
 from llm_parser import parse_tags
 from llm import llm_query
-from diff_helper import apply_patch, PatchError
+from path_helper import get_relative_path
+from command_interpreter import CommandInterpreter
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -21,12 +20,6 @@ MAX_ITERATION=os.getenv('MAX_ITERATION')
 import logging
 logger = logging.getLogger('APP')
 logging.basicConfig(level=logging.INFO)
-
-def _helper_get_relative_path(project_root: str, path: str) -> str:
-    project_root = project_root.replace('\\', '/')
-    path = path.replace('\\', '/')
-    absolute_path = Path(project_root)
-    return str(Path(path).relative_to(absolute_path)).replace('\\', '/')
 
 
 def _helper_command_create_output(command: dict) -> str:
@@ -47,112 +40,8 @@ def _helper_command_create_output(command: dict) -> str:
 </COMMAND>"""
 
 
-class CommandInterpreter:
-    def __init__(self, mcp_host):
-        self.mcp_host = mcp_host
-
-    def _command_read(self, file_path) -> dict:
-        content = tool_call(self.mcp_host, 'get_file_text_by_path', {
-            'pathInProject': file_path,
-        })
-        return {'result': content.get('status', 'False'), 'exists': 'status' in content}
-
-    def _command_list(self, path) -> dict:
-        content = tool_call(self.mcp_host, 'list_files_in_folder', {
-            'pathInProject': path,
-        })
-
-        if 'error' in content:
-            return {'result': "ERROR: Path not exists"}
-
-        result = []
-
-        content['status'] = content['status'].replace('\\', '/').replace('//', '/')
-        try:
-            content = json.loads(content['status'])
-        except:
-            logger.error("JSON decode: " + content['status'])
-            raise Exception("JSON decode")
-
-        for obj in content:
-            _path = obj['path'].replace('\\', '/')
-            if obj['type'] == 'directory':
-                _path += '/'
-            result.append(f"- {_path}")
-
-        return {'result': "\n".join(result)}
-
-    def _command_write(self, file_path, data) -> dict:
-        # looking for file exists:
-        is_exist = self._command_read(file_path)['exists']
-        if is_exist:
-            method = 'replace_file_text_by_path'
-        else:
-            method = 'create_new_file_with_text'
-
-        # trim wrapper
-        data = data.strip()
-        if re.match(r'^```[a-z]+\s', data):
-            data = re.sub(r'^```[a-z]+\s', '', data)
-        elif data[:3] == '```':
-            data = data[3:]
-
-        data = re.sub(r'```$', '', data)
-
-        content = tool_call(self.mcp_host, method, {
-            'pathInProject': file_path,
-            'text': data.strip(),
-        })
-
-        return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
-
-    def _command_write_diff(self, file_path, data):
-        source_file = self._command_read(file_path)
-        if not source_file['exists']:
-            return {'result': "ERROR: file not exist"}
-
-        source_code = source_file['result']
-        source_code = [_.rstrip() for _ in source_code.split("\n")]
-
-        try:
-            patched_file = apply_patch("\n".join(source_code), data)
-        except PatchError as e:
-            return {'result': f"ERROR: {e}"}
-
-        content = tool_call(self.mcp_host, 'replace_file_text_by_path', {
-            'pathInProject': file_path,
-            'text': patched_file.strip(),
-        })
-
-        return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
-
-    def _command_message(self, data) -> dict:
-        return {'result': data, 'output': True}
-
-    def execute(self, opcode: str, arguments) -> dict:
-
-        try:
-            if opcode == 'READ' or opcode == 'RE_READ':
-                return self._command_read(*arguments)
-            elif opcode == 'LIST':
-                return self._command_list(*arguments)
-            elif opcode == 'WRITE':
-                return self._command_write(*arguments)
-            elif opcode == 'WRITE_DIFF':
-                return self._command_write_diff(*arguments)
-            elif opcode == 'EXIT':
-                return {'exit': True}
-            elif opcode == 'MESSAGE':
-                return self._command_message(*arguments)
-            else:
-                raise Exception(f"Unknown opcode: {opcode}")
-        except TypeError:
-            return {"result": "ERROR: wrong command code/arguments, check you output, fix considering DSL and try again"}
-
-
 class Copilot:
     PROJECT_DESCRIPTION = "./.copilot_project.xml"
-    STEP_TOOL_READ_MANIFEST = 'tooluse_read_project_config'
     MAX_STEP = int(MAX_ITERATION)
 
     def __init__(self, request):
@@ -211,25 +100,13 @@ class Copilot:
                 break
 
         assert self.instruction, 'Empty instruction'
-
-        # first copilot's message contains conversation's id
-        for messages in self.request['messages']:
-            if messages['role'] == 'assistant':
-                _id = re.findall(r'^```<CONVERSATION_ID>(\d+\.\d+)</CONVERSATION_ID>```', messages['content'])
-                assert _id[0], 'Empty conversation_id'
-                self.conversation_id = _id[0]
-                break
-
-        if self.conversation_id:
-            return
-
         self.conversation_id = time.time()
 
         manifest = self.get_manifest()
         _project_base_path = manifest['path'][0].strip()
         _current_open_file = tool_call(IDE_MCP_HOST, 'get_open_in_editor_file_path')['status']
         if _current_open_file:
-            _current_open_file = _helper_get_relative_path(_project_base_path, _current_open_file)
+            _current_open_file = get_relative_path(_project_base_path, _current_open_file)
 
         self.manifest = {
             'base_path': _project_base_path,
@@ -239,8 +116,7 @@ class Copilot:
         }
 
         self.output = [
-            # @todo dialog feature
-            # conversation.get_message(f"<CONVERSATION_ID>{self.conversation_id}</CONVERSATION_ID>", "assistant", "info"),
+            conversation.get_message(f"start...", "assistant", "info"),
         ]
 
         self.executed_commands = []
@@ -253,7 +129,7 @@ class Copilot:
         for dir_object in glob.glob(base_path + "/*"):
             is_dir = os.path.isdir(dir_object)
 
-            dir_object = _helper_get_relative_path(base_path, dir_object)
+            dir_object = get_relative_path(base_path, dir_object)
 
             if is_dir:
                 dir_object = dir_object + "/"
