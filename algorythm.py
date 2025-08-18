@@ -10,6 +10,7 @@ from llm_parser import parse_tags
 from llm import llm_query
 from path_helper import get_relative_path
 from command_interpreter import CommandInterpreter
+from agents import BaseAgent
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,7 +40,6 @@ def _helper_command_create_output(command: dict) -> str:
     <RESULT>\n{result}\n</RESULT>
 </COMMAND>"""
 
-
 class Copilot:
     PROJECT_DESCRIPTION = "./.copilot_project.xml"
     MAX_STEP = int(MAX_ITERATION)
@@ -61,7 +61,7 @@ class Copilot:
         self.system_prompt = ''
         self.prompt = ''
         self.executed_commands = []
-        self.argent_step = 0
+        self.agent_step = 0
 
         self.command_state = []
 
@@ -115,13 +115,11 @@ class Copilot:
             'current_open_file': _current_open_file,
         }
 
-        self.output = [
-            conversation.get_message(f"start...", "assistant", "info"),
-        ]
+        self.output = []
 
         self.executed_commands = []
         self.command_state = []
-        self.argent_step = 1
+        self.agent_step = 1
         self.interpreter = CommandInterpreter(IDE_MCP_HOST)
 
     def _read_project_structure(self, base_path) -> list:
@@ -147,100 +145,15 @@ class Copilot:
         if self.output:
             yield from self.output
 
-        yield from self._run_llm_iteration()
+        agent = BaseAgent('SUPERVISOR', self.system_prompt, self.prompt)
+        agent.init(self.instruction, self.manifest, './conversations_log/log.log')
+        for step in agent.run():
+            yield conversation.get_message(step['message'], 'assistant', step['type'])
+
+            if step.get('exit', False):
+                break
+
         yield conversation.get_terminal()
-
-    def _run_llm_iteration(self):
-        current_open_file = ''
-        if self.manifest['current_open_file']:
-            current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
-
-        self.argent_step = 1
-        while True:
-            if self.argent_step > self.MAX_STEP:
-                logger.warning("MAX_STEP exceed!")
-                yield conversation.get_message("MAX_STEP exceed!", role="assistant", message_type="error")
-                break
-
-            current_prompt = self.prompt.format(
-                project_description=self.manifest['description'],
-                current_file_open=current_open_file,
-                project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
-                instruction=self.instruction,
-                commands_prev_step="\n".join(
-                    [_helper_command_create_output(_) for _ in self.executed_commands]
-                ),
-            )
-
-            self.log("============= PROMPT =============\n" + current_prompt, True)
-            output = llm_query([
-                {
-                    'role': 'system',
-                    'content': self.system_prompt
-                },
-                {
-                    'role': 'user',
-                    'content': current_prompt
-                }
-            ], ['COMMAND', 'PLAN'])
-            self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
-
-            result_commands = output.get('COMMAND', [])
-            if not result_commands:
-                yield conversation.get_message("Not commands (1), early stop", role="assistant", message_type="error")
-                break
-
-            work_plan = output.get('PLAN', [])
-
-            executed_commands_idx = {}
-            for command in self.executed_commands:
-                _key = command['opcode'] + ":" + json.dumps(command['arguments'])
-                executed_commands_idx[_key] = True
-
-            current_opcode = ''
-            current_arguments = []
-            for command in result_commands:
-                opcode = parse_tags(command, ['OPCODE']).get('OPCODE', [''])[0]
-                if not opcode:
-                    continue
-
-                arguments = parse_tags(command, ['ARG'], True).get('ARG', [''])
-                _key = opcode + ":" + json.dumps(arguments)
-                if opcode != 'RE_READ' and _key in executed_commands_idx:
-                    continue
-
-                current_opcode = opcode
-                current_arguments = arguments
-                if opcode not in ['EXIT', 'MESSAGE']:
-                    log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
-                    yield conversation.get_message(f"{log_str}", role="assistant", message_type="info")
-
-                break
-
-            if not current_opcode:
-                yield conversation.get_message("Not commands (2), early stop", role="assistant", message_type="error")
-                break
-
-            result = self.interpreter.execute(current_opcode, current_arguments)
-            self.executed_commands.append({
-                'opcode': current_opcode,
-                'arguments': current_arguments,
-                'result': result.get('result', ''),
-                'plan': work_plan,
-            })
-            self.log("============= EXECUTE =============\n" + "OPCODE=" + current_opcode + "\n\nARG=" + "\nARG=".join(current_arguments) + "\n\nRESULT=" + result.get('result', ''), True)
-
-            is_inc_step = current_opcode not in ['MESSAGE']
-
-            if result.get('exit', False):
-                logger.info("Finished")
-                break
-
-            if result.get('output', False):
-                yield conversation.get_message(result['result'], role="assistant", message_type="markdown")
-
-            if is_inc_step:
-                self.argent_step += 1
 
     def log(self, data, to_file=False):
         if type(data) is list or type(data) is dict:

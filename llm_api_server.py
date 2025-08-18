@@ -118,6 +118,7 @@ def event_stream():
 
         except Exception as e:
             yield f"data: {json.dumps({'role': 'system', 'type': 'error', 'message': str(e)})}\n\n"
+            logger.error(e)
             break
 
     EVENTS_LOCK.release()

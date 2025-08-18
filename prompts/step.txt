@@ -1,0 +1,17 @@
+# Current worked project description:
+{project_description}
+
+{current_file_open}
+
+## Project files and folders:
+{project_structure}
+
+# Task:
+<TASK>
+{instruction}
+</TASK>
+
+# Commands from previous step:
+<COMMANDS>
+{commands_prev_step}
+</COMMANDS>

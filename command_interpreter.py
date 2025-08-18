@@ -85,7 +85,6 @@ class CommandInterpreter:
         return {'result': data, 'output': True}
 
     def execute(self, opcode: str, arguments) -> dict:
-
         try:
             if opcode == 'READ' or opcode == 'RE_READ':
                 return self._command_read(*arguments)
@@ -102,4 +101,4 @@ class CommandInterpreter:
             else:
                 raise Exception(f"Unknown opcode: {opcode}")
         except TypeError:
-            return {"result": "ERROR: wrong command code/arguments, check you output, fix considering DSL and try again"}
+            return {"result": "ERROR: wrong command code/arguments, check you output, fix accordance DSL and try again"}
