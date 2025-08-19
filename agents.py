@@ -132,7 +132,7 @@ class BaseAgent:
 
                 current_opcode = opcode
                 current_arguments = arguments
-                if opcode not in ['EXIT', 'MESSAGE']:
+                if opcode not in ['REPORT']:
                     log_str = f"Execute command: {opcode}; with argument: {arguments[0]}"
                     yield {
                         'message': f"{log_str}",
@@ -150,7 +150,16 @@ class BaseAgent:
                 }
                 break
 
-            result = self.interpreter.execute(current_opcode, current_arguments)
+            if current_opcode != 'REPORT':
+                result = self.interpreter.execute(current_opcode, current_arguments)
+            else:
+                yield {
+                    'message': current_arguments[0],
+                    'type': "report",
+                    'exit': True,
+                }
+                break
+
             executed_commands.append({
                 'opcode': current_opcode,
                 'arguments': current_arguments,
@@ -159,8 +168,6 @@ class BaseAgent:
             })
             self.log("============= EXECUTE =============\n" + "OPCODE=" + current_opcode + "\n\nARG=" + "\nARG=".join(
                 current_arguments) + "\n\nRESULT=" + result.get('result', ''), True)
-
-            is_inc_step = current_opcode not in ['MESSAGE']
 
             if result.get('exit', False):
                 logger.info("Finished")
@@ -173,8 +180,7 @@ class BaseAgent:
                     'exit': False,
                 }
 
-            if is_inc_step:
-                agent_step += 1
+            agent_step += 1
 
     def log(self, data, to_file=False):
         if type(data) is list or type(data) is dict:
@@ -192,12 +198,11 @@ class BaseAgent:
 
 class Agent:
     PROMPTS = {
-        'SUPERVISOR': './prompts/supervisor_system.txt',
         'ANALYTIC': './prompts/analytic_system.txt',
-        'CODER': './prompts/step.txt',
+        'CODER': './prompts/coder_system.txt',
     }
 
-    STEP_PROMPT = './prompts/coder_system.txt'
+    STEP_PROMPT = './prompts/step.txt'
 
     @staticmethod
     def fabric(role) -> BaseAgent:

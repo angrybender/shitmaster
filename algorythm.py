@@ -10,7 +10,7 @@ from llm_parser import parse_tags
 from llm import llm_query
 from path_helper import get_relative_path
 from command_interpreter import CommandInterpreter
-from agents import BaseAgent
+from agents import Agent
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,26 +23,20 @@ logger = logging.getLogger('APP')
 logging.basicConfig(level=logging.INFO)
 
 
-def _helper_command_create_output(command: dict) -> str:
-    arguments = command['arguments']
-    result = command['result']
-    opcode = command['opcode']
+def _helper_command_create_output(user_task: str, agents_conversation: list) -> str:
+    task_status = [
+        f"<STEP>USER -> SUPERVISOR: {user_task}</STEP>"
+    ]
 
-    plan = ""
-    if command['plan']:
-        plan = "\n<PLAN>" + "\n".join(command['plan']) + "</PLAN>"
+    for step in agents_conversation:
+        task_status.append(f"{step['agent_from']} -> {step['agent_to']}: {step['instruction']}")
 
-    arguments_str = "    \n".join([f"<ARG>{arg}</ARG>" for arg in arguments])
-
-    return f"""<COMMAND>{plan}
-    <OPCODE>{opcode}</OPCODE>
-{arguments_str}
-    <RESULT>\n{result}\n</RESULT>
-</COMMAND>"""
+    return "\n".join(task_status)
 
 class Copilot:
     PROJECT_DESCRIPTION = "./.copilot_project.xml"
     MAX_STEP = int(MAX_ITERATION)
+    LOG_FILE = './conversations_log/log.log'
 
     def __init__(self, request):
         self.request = request
@@ -85,10 +79,10 @@ class Copilot:
 
     def _init(self):
         if not self.prompt:
-            self.prompt = open('step_prompt.txt', 'r', encoding='utf8').read()
+            self.prompt = open('./prompts/supervisor_step.txt', 'r', encoding='utf8').read()
 
         if not self.system_prompt:
-            self.system_prompt = open('system_prompt.txt', 'r', encoding='utf8').read()
+            self.system_prompt = open('./prompts/supervisor_system.txt', 'r', encoding='utf8').read()
 
         if self.instruction and self.conversation_id:
             return
@@ -135,23 +129,148 @@ class Copilot:
             result.append(dir_object)
         return result
 
+    def _self_call(self, instruction: str):
+        command =  parse_tags(instruction, ['MESSAGE', 'EXIT'])
+        opcode = command.get('MESSAGE', None)
+        if opcode:
+            return {
+                'message': opcode[0],
+                'type': "markdown",
+            }
+
+        opcode = command.get('EXIT', None)
+        if opcode:
+            return {
+                'type': "exit",
+            }
+
+        return {
+            'message': f"Agent call error (opcode)",
+            'type': "error",
+        }
+
     def run(self):
-        logger.info("RUN. Messages:")
-        logger.info(self.request['messages'])
-        with open('./conversations_log/log.log', "w", encoding='utf8') as f:
+        self._init()
+        yield {
+            'message': f"start SUPERVISOR...",
+            'type': "info",
+        }
+
+        with open(self.LOG_FILE, "w", encoding='utf8') as f:
             f.write(str(datetime.datetime.now()) + "\n\n")
 
-        self._init()
-        if self.output:
-            yield from self.output
+        self.log(f"RUN. Messages: `{self.instruction}`", False)
 
-        agent = BaseAgent('SUPERVISOR', self.system_prompt, self.prompt)
-        agent.init(self.instruction, self.manifest, './conversations_log/log.log')
-        for step in agent.run():
-            yield conversation.get_message(step['message'], 'assistant', step['type'])
+        executed_commands = []
+        current_open_file = ''
+        if self.manifest['current_open_file']:
+            current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
 
-            if step.get('exit', False):
+        agent_step_counter = 1
+        while True:
+            if agent_step_counter > self.MAX_STEP:
+                logger.warning("MAX_STEP exceed!")
+                yield {
+                    'message': "MAX_STEP exceed!",
+                    'type': "error",
+                }
                 break
+
+            current_prompt = self.prompt.format(
+                project_description=self.manifest['description'],
+                current_file_open=current_open_file,
+                project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
+                instruction=self.instruction,
+                task_status=_helper_command_create_output(self.instruction, executed_commands)
+            )
+
+            self.log("============= PROMPT =============\n" + current_prompt, True)
+            output = llm_query([
+                {
+                    'role': 'system',
+                    'content': self.system_prompt
+                },
+                {
+                    'role': 'user',
+                    'content': current_prompt
+                }
+            ], ['AGENT'])
+            self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
+
+            agent_calling = output.get('AGENT', [''])[0]
+            if not agent_calling:
+                yield {
+                    'message': "Agent call error (empty)",
+                    'type': "error",
+                }
+                break
+
+            call_command = parse_tags(agent_calling, ['ROLE', 'INSTRUCTION'])
+            agent_name = call_command.get('ROLE', ['[EMPTY]'])[0]
+            if agent_name != 'SUPERVISOR' and agent_name not in Agent.PROMPTS:
+                yield {
+                    'message': f"Agent call error (name), name=`{agent_name}`",
+                    'type': "error",
+                }
+                break
+
+            agent_instruction = call_command.get('INSTRUCTION', [''])[0]
+            if not agent_instruction:
+                yield {
+                    'message': f"Agent call error (empty instruction)",
+                    'type': "error",
+                }
+                break
+
+            if agent_name == 'SUPERVISOR':
+                result = self._self_call(agent_instruction)
+                if result['type'] == 'error':
+                    yield result
+                    break
+                elif result['type'] == 'exit':
+                    break
+                else:
+                    executed_commands.append({
+                        'agent_from': 'SUPERVISOR',
+                        'agent_to': 'SUPERVISOR',
+                        'instruction': agent_instruction,
+                    })
+                    yield result
+            else:
+                executed_commands.append({
+                    'agent_from': 'SUPERVISOR',
+                    'agent_to': agent_name,
+                    'instruction': agent_instruction,
+                })
+
+                agent = Agent.fabric(agent_name)
+                agent.init(agent_instruction, self.manifest, self.LOG_FILE)
+
+                is_agent_completes_work = False
+                for agent_step in agent.run():
+                    if agent_step['type'] == 'report':
+                        is_agent_completes_work = True
+                        executed_commands.append({
+                            'agent_from': agent_name,
+                            'agent_to': 'SUPERVISOR',
+                            'instruction': agent_step['message'],
+                        })
+                        agent_step['type'] = 'markdown'
+                        agent_step['message'] = f"Agent report: \n{agent_step['message']}"
+                    elif agent_step['type'] == 'error':
+                        executed_commands.append({
+                            'agent_from': agent_name,
+                            'agent_to': 'SUPERVISOR',
+                            'instruction': 'Agent cant do work, try another approach: add more details, rewrite instruction for agent!', # TODO ???
+                        })
+
+                        is_agent_completes_work = True
+
+                    yield agent_step
+                    if is_agent_completes_work:
+                        break
+
+            agent_step_counter += 1
 
         yield conversation.get_terminal()
 
@@ -163,6 +282,6 @@ class Copilot:
             logger.info(data)
             return
 
-        with open('./conversations_log/log.log', "a", encoding='utf8') as f:
+        with open(self.LOG_FILE, "a", encoding='utf8') as f:
             f.write(data + "\n\n")
 
