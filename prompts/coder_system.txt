@@ -17,6 +17,7 @@ START:
 ```
 `OPCODE` include code of command (list read below).
 `ARG` are list of arguments for `OPCODE`, attribute `name` contains name of argument (not value!).
+!!! YOU MUST WRITE AT LEAST ONCE COMMAND - !!! If you not clear how continue work - see `REPORT` OPCODE below
 
     2.3. Your command will execute and result will be returns to you back in prompt:
 ```dsl
@@ -150,7 +151,8 @@ Arguments:
 `<ARG name="text"></ARG>` : message body, use markdown format
 
 #### `RE_READ`: force reading the file
-use this command for reading updated file
+Use this command for reading updated file.
+Avoid using this OPCODE when you read file below or write file: looking for content in the <COMMANDS>
 
 Arguments:
 `<ARG name="path"></ARG>` : path of reading file
@@ -167,6 +169,7 @@ Will contains data of file, of "False" if file not exists:
 
 #### `REPORT`: print short report of you work
 Use this command when you completely executed instructions and you have decided to finish work.
+Dont write full content of files - short agenta is enough!
 Arguments:
 `<ARG name="text"></ARG>` : message body, use markdown format
 

@@ -69,6 +69,7 @@ class BaseAgent:
             current_open_file = f"Path of current open file in IDE: `{self.current_open_file}`"
 
         agent_step = 1
+        prompt_appendix = ''
         while True:
             if agent_step > MAX_ITERATION:
                 logger.warning("MAX_STEP exceed!")
@@ -83,7 +84,7 @@ class BaseAgent:
                 project_description=self.project_description,
                 current_file_open=current_open_file,
                 project_structure="\n".join([f"- {path}" for path in self.project_structure]),
-                instruction=self.instruction,
+                instruction=self.instruction + prompt_appendix,
                 commands_prev_step="\n".join(
                     [_helper_command_create_output(_) for _ in executed_commands]
                 ),
@@ -142,7 +143,16 @@ class BaseAgent:
 
                 break
 
-            if not current_opcode:
+            if not current_opcode and not prompt_appendix:
+                prompt_appendix = '\nWrite detailed report of you work based on <COMMANDS> data!'
+                yield {
+                    'message': "Early exit",
+                    'type': "info",
+                    'exit': True,
+                }
+                continue
+
+            if not current_opcode and prompt_appendix:
                 yield {
                     'message': "Not commands (2), early stop",
                     'type': "error",

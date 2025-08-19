@@ -32,6 +32,7 @@ def process_task(user_request):
     }]})
 
     for message in session.run():
+        message['timestamp'] = time.time()
         yield f"data: {json.dumps(message)}\n\n"
 
 
