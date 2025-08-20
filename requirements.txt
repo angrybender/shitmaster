@@ -1,8 +1,7 @@
 openai
 tqdm
 python-dotenv
-fastapi
-uvicorn
+flask
 httpx
 pydantic
 requests

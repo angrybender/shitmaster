@@ -32,6 +32,7 @@ def process_task(user_request):
     }]})
 
     for message in session.run():
+        message['timestamp'] = time.time()
         yield f"data: {json.dumps(message)}\n\n"
 
 
@@ -118,6 +119,7 @@ def event_stream():
 
         except Exception as e:
             yield f"data: {json.dumps({'role': 'system', 'type': 'error', 'message': str(e)})}\n\n"
+            logging.exception("message")
             break
 
     EVENTS_LOCK.release()
