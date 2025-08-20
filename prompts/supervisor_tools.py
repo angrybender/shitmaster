@@ -41,7 +41,11 @@ tools = [
         "type":"function",
         "function":{
             "name": "exit",
-            "description": "Stop conversation, only if you full complete a work and achieve the goal"
+            "description": "Stop conversation, only if you full complete a work and achieve the goal",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
         }
     }
 ]

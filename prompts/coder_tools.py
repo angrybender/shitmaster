@@ -43,60 +43,60 @@ example:
             }
         }
     },
-{
-        "type":"function",
-        "function":{
-            "name": "write_diff_file",
-            "description": "Apply patch to existed file in the SEARCH/REPLACE format.\nUse this command ONLY if:\n1. file more than 100 lines\n2. you edit exists file\n",
-            "parameters": {
-                "type": "object",
-                "required": ["path", "patch"],
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "path to file"
-                    },
-                    "patch": {
-                        "type": "string",
-                        "description":
-"""patch for write to the file, SEARCH/REPLACE block, follow rules:
-- block begins at:
-<<<<<<< SEARCH
-- next, print modified lines from source file, are will search and replace
-- SEARCH-part MUST be small as possible and unique
-- every line of source code begin with space char
-- SEARCH-part CANT be empty
-- next, print separator of SEARCH и REPLACE parts:
-=======
-- next, print lines for replacing, save all tab, spaces, comment, block comments etc
-- SEARCH/REPLACE ends with:
->>>>>>> REPLACE
-- if need to delete lines - REPLACE part MUST be empty
-- save all tab, spaces, comment, block comments etc
-- follow format considering for program language that you prints
-- DONT put separator before `>>>>>>> REPLACE`
-- put ALL changed into the ONCE COMMAND for current file.
-
-Example:
-<<<<<<< SEARCH
- from flask import Flask
-=======
-import math
-from flask import Flask
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
- class Main:
-   def method(self, a):
-=======
-class Main:
-  def method(self, a: str):
->>>>>>> REPLACE"""
-                    }
-                }
-            }
-        }
-    },
+# {
+#         "type":"function",
+#         "function":{
+#             "name": "write_diff_file",
+#             "description": "Apply patch to existed file in the SEARCH/REPLACE format.\nUse this command ONLY if:\n1. file more than 100 lines\n2. you edit exists file\n",
+#             "parameters": {
+#                 "type": "object",
+#                 "required": ["path", "patch"],
+#                 "properties": {
+#                     "path": {
+#                         "type": "string",
+#                         "description": "path to file"
+#                     },
+#                     "patch": {
+#                         "type": "string",
+#                         "description":
+# """patch for write to the file, SEARCH/REPLACE block, follow rules:
+# - block begins at:
+# <<<<<<< SEARCH
+# - next, print modified lines from source file, are will search and replace
+# - SEARCH-part MUST be small as possible and unique
+# - every line of source code begin with space char
+# - SEARCH-part CANT be empty
+# - next, print separator of SEARCH и REPLACE parts:
+# =======
+# - next, print lines for replacing, save all tab, spaces, comment, block comments etc
+# - SEARCH/REPLACE ends with:
+# >>>>>>> REPLACE
+# - if need to delete lines - REPLACE part MUST be empty
+# - save all tab, spaces, comment, block comments etc
+# - follow format considering for program language that you prints
+# - DONT put separator before `>>>>>>> REPLACE`
+# - put ALL changed into the ONCE COMMAND for current file.
+#
+# Example:
+# <<<<<<< SEARCH
+#  from flask import Flask
+# =======
+# import math
+# from flask import Flask
+# >>>>>>> REPLACE
+#
+# <<<<<<< SEARCH
+#  class Main:
+#    def method(self, a):
+# =======
+# class Main:
+#   def method(self, a: str):
+# >>>>>>> REPLACE"""
+#                     }
+#                 }
+#             }
+#         }
+#     },
     {
         "type":"function",
         "function":{

@@ -90,7 +90,7 @@ class BaseAgent:
                 tool_call_description = {
                     'function': tool_call.function.name,
                     'id': tool_call.id,
-                    'args': list(json.loads(tool_call.function.arguments).values())
+                    'args': list(json.loads(tool_call.function.arguments).values()) if tool_call.function.arguments else []
                 }
                 current_tool_call = tool_call
                 break
