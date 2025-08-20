@@ -11,7 +11,13 @@ class CommandInterpreter:
         content = tool_call(self.mcp_host, 'get_file_text_by_path', {
             'pathInProject': file_path,
         })
-        return {'result': content.get('status', 'False'), 'exists': 'status' in content}
+
+        if 'status' not in content:
+            result = "ERROR: File not exists"
+        else:
+            result = content['status']
+
+        return {'result': result, 'exists': 'status' in content}
 
     def _command_list(self, path) -> dict:
         content = tool_call(self.mcp_host, 'list_files_in_folder', {
@@ -46,6 +52,13 @@ class CommandInterpreter:
             method = 'create_new_file_with_text'
 
         # trim wrapper
+        if type(data) is dict or type(data) is list:
+            # workaround for some stupid local LLM
+            data = json.dumps(data, ensure_ascii=False, indent=4)
+
+        if type(data) is not str:
+            return {'result': "ERROR: file content must be string!"}
+
         data = data.strip()
         if re.match(r'^```[a-z]+\s', data):
             data = re.sub(r'^```[a-z]+\s', '', data)
@@ -86,13 +99,13 @@ class CommandInterpreter:
 
     def execute(self, opcode: str, arguments) -> dict:
         try:
-            if opcode == 'READ' or opcode == 'RE_READ':
+            if opcode in ['read_file', 'READ', 'RE_READ']:
                 return self._command_read(*arguments)
-            elif opcode == 'LIST':
+            elif opcode == 'LIST' or opcode == 'list_in_directory':
                 return self._command_list(*arguments)
-            elif opcode == 'WRITE':
+            elif opcode == 'WRITE' or opcode == 'write_file':
                 return self._command_write(*arguments)
-            elif opcode == 'WRITE_DIFF':
+            elif opcode == 'WRITE_DIFF' or opcode == 'write_diff_file':
                 return self._command_write_diff(*arguments)
             elif opcode == 'EXIT':
                 return {'exit': True}

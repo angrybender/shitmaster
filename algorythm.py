@@ -11,8 +11,10 @@ from llm import llm_query
 from path_helper import get_relative_path
 from command_interpreter import CommandInterpreter
 from agents import Agent
+from prompts.supervisor_tools import tools as supervisor_tools
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 IDE_MCP_HOST=os.getenv('IDE_MCP_HOST')
@@ -22,16 +24,6 @@ import logging
 logger = logging.getLogger('APP')
 logging.basicConfig(level=logging.INFO)
 
-
-def _helper_command_create_output(user_task: str, agents_conversation: list) -> str:
-    task_status = [
-        f"<STEP>USER -> SUPERVISOR: {user_task}</STEP>"
-    ]
-
-    for step in agents_conversation:
-        task_status.append(f"{step['agent_from']} -> {step['agent_to']}: {step['instruction']}")
-
-    return "\n".join(task_status)
 
 class Copilot:
     PROJECT_DESCRIPTION = "./.copilot_project.xml"
@@ -78,11 +70,11 @@ class Copilot:
         return parse_tags(_manifest_file, ['path', 'description', 'mcp'])
 
     def _init(self):
-        if not self.prompt:
-            self.prompt = open('./prompts/supervisor_step.txt', 'r', encoding='utf8').read()
-
         if not self.system_prompt:
             self.system_prompt = open('./prompts/supervisor_system.txt', 'r', encoding='utf8').read()
+
+        if not self.prompt:
+            self.prompt = open('./prompts/step.txt', 'r', encoding='utf8').read()
 
         if self.instruction and self.conversation_id:
             return
@@ -129,26 +121,6 @@ class Copilot:
             result.append(dir_object)
         return result
 
-    def _self_call(self, instruction: str):
-        command =  parse_tags(instruction, ['MESSAGE', 'EXIT'])
-        opcode = command.get('MESSAGE', None)
-        if opcode:
-            return {
-                'message': opcode[0],
-                'type': "markdown",
-            }
-
-        opcode = command.get('EXIT', None)
-        if opcode:
-            return {
-                'type': "exit",
-            }
-
-        return {
-            'message': f"Agent call error (opcode)",
-            'type': "error",
-        }
-
     def run(self):
         self._init()
         yield {
@@ -161,10 +133,25 @@ class Copilot:
 
         self.log(f"RUN. Messages: `{self.instruction}`", False)
 
-        executed_commands = []
         current_open_file = ''
         if self.manifest['current_open_file']:
             current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
+        sub_prompt = self.prompt.format(
+            project_description=self.manifest['description'],
+            current_file_open=current_open_file,
+            project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
+        )
+
+        conversation_log = [
+            {
+                'role': 'system',
+                'content': self.system_prompt + "\n" + sub_prompt
+            },
+            {
+                'role': 'user',
+                'content': self.instruction
+            }
+        ]
 
         agent_step_counter = 1
         while True:
@@ -176,72 +163,63 @@ class Copilot:
                 }
                 break
 
-            current_prompt = self.prompt.format(
-                project_description=self.manifest['description'],
-                current_file_open=current_open_file,
-                project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
-                instruction=self.instruction,
-                task_status=_helper_command_create_output(self.instruction, executed_commands)
-            )
+            output = llm_query(conversation_log, tools=supervisor_tools)
+            self.log("============= LLM OUTPUT =============", True)
 
-            self.log("============= PROMPT =============\n" + current_prompt, True)
-            output = llm_query([
-                {
-                    'role': 'system',
-                    'content': self.system_prompt
-                },
-                {
-                    'role': 'user',
-                    'content': current_prompt
+            tool_call_description = None
+            current_tool_call = None
+            for tool_call in output['_tool_calls']:
+                tool_call_description = {
+                    'function': tool_call.function.name,
+                    'id': tool_call.id,
                 }
-            ], ['AGENT'])
-            self.log("============= LLM OUTPUT =============\n" + output['_output'], True)
 
-            agent_calling = output.get('AGENT', [''])[0]
-            if not agent_calling:
+                arguments = json.loads(tool_call.function.arguments) if tool_call.function.arguments else []
+
+                if tool_call.function.name == 'call_agent':
+                    instruction = arguments.get('instruction', None)
+                    agent_name = arguments.get('agent_name', None)
+                    tool_call_description['args'] = [agent_name, instruction]
+                elif tool_call.function.name == 'message':
+                    tool_call_description['args'] = [arguments.get('text', None)]
+
+                current_tool_call = tool_call
+                break
+
+            if not tool_call_description:
                 yield {
                     'message': "Agent call error (empty)",
                     'type': "error",
                 }
                 break
 
-            call_command = parse_tags(agent_calling, ['ROLE', 'INSTRUCTION'])
-            agent_name = call_command.get('ROLE', ['[EMPTY]'])[0]
-            if agent_name != 'SUPERVISOR' and agent_name not in Agent.PROMPTS:
-                yield {
-                    'message': f"Agent call error (name), name=`{agent_name}`",
-                    'type': "error",
-                }
-                break
+            self.log(tool_call_description, True)
 
-            agent_instruction = call_command.get('INSTRUCTION', [''])[0]
-            if not agent_instruction:
-                yield {
-                    'message': f"Agent call error (empty instruction)",
-                    'type': "error",
-                }
+            agent_complete_report = None
+            if tool_call_description['function'] == 'exit':
                 break
+            elif tool_call_description['function'] == 'message':
+                yield {
+                    'message': tool_call_description['args'][0],
+                    'type': "markdown",
+                }
 
-            if agent_name == 'SUPERVISOR':
-                result = self._self_call(agent_instruction)
-                if result['type'] == 'error':
-                    yield result
+                agent_complete_report = 'message print to user'
+            elif tool_call_description['function'] == 'call_agent':
+                agent_name, agent_instruction = tool_call_description['args']
+                if agent_name not in Agent.PROMPTS:
+                    yield {
+                        'message': f"Agent call error (name), name=`{agent_name}`",
+                        'type': "error",
+                    }
                     break
-                elif result['type'] == 'exit':
+
+                if not agent_instruction:
+                    yield {
+                        'message': f"Agent call error (empty instruction)",
+                        'type': "error",
+                    }
                     break
-                else:
-                    executed_commands.append({
-                        'agent_from': 'SUPERVISOR',
-                        'agent_to': 'SUPERVISOR',
-                        'instruction': agent_instruction,
-                    })
-                    yield result
-            else:
-                executed_commands.append({
-                    'agent_from': 'SUPERVISOR',
-                    'agent_to': agent_name,
-                    'instruction': agent_instruction,
-                })
 
                 agent = Agent.fabric(agent_name)
                 agent.init(agent_instruction, self.manifest, self.LOG_FILE)
@@ -250,25 +228,36 @@ class Copilot:
                 for agent_step in agent.run():
                     if agent_step['type'] == 'report':
                         is_agent_completes_work = True
-                        executed_commands.append({
-                            'agent_from': agent_name,
-                            'agent_to': 'SUPERVISOR',
-                            'instruction': agent_step['message'],
-                        })
+                        agent_complete_report = agent_step['message']
                         agent_step['type'] = 'markdown'
-                        agent_step['message'] = f"Agent report: \n{agent_step['message']}"
                     elif agent_step['type'] == 'error':
-                        executed_commands.append({
-                            'agent_from': agent_name,
-                            'agent_to': 'SUPERVISOR',
-                            'instruction': 'Agent cant do work, try another approach: add more details, rewrite instruction for agent!', # TODO ???
-                        })
-
+                        agent_complete_report = 'Agent cant do work, try another approach: add more details, rewrite instruction for agent!', # TODO ???
                         is_agent_completes_work = True
 
                     yield agent_step
                     if is_agent_completes_work:
                         break
+            else:
+                yield {
+                    'message': "Agent call error (wrong tool)",
+                    'type': "error",
+                }
+                break
+
+            if current_tool_call:
+                conversation_log.append({
+                    'role': 'assistant',
+                    'content': output['_output'],
+                    'tool_calls': [current_tool_call]
+                })
+
+                if agent_complete_report:
+                    conversation_log.append({
+                        'role': 'tool',
+                        'tool_call_id': current_tool_call.id,
+                        'name': current_tool_call.function.name,
+                        'content': agent_complete_report
+                    })
 
             agent_step_counter += 1
 

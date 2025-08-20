@@ -1,8 +1,12 @@
+import json
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
 import time
 from llm_parser import parse_tags
+
+import logging
+logger = logging.getLogger('APP')
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,7 +24,7 @@ else:
     MAX_PROMPT_OUTPUT = None
 
 
-def llm_query(messages, tags=None) -> dict|None:
+def llm_query(messages, tags=None, tools=None) -> dict|None:
     client = OpenAI(
         api_key=API_KEY,
         base_url=API_URL,
@@ -44,20 +48,30 @@ def llm_query(messages, tags=None) -> dict|None:
                 messages=messages,
                 model=MODEL,
                 max_tokens=MAX_PROMPT_OUTPUT,
-                temperature=LLM_TEMPERATURE
+                temperature=LLM_TEMPERATURE,
+                tools=tools,
             )
 
             content = response.choices[0].message.content.strip()
-            if len(content) == 0:
+            if len(content) == 0 and tools and not response.choices[0].message.tool_calls:
                 raise Exception("Empty response")
 
-            output = parse_tags(content, tags)
+            if tags:
+                output = parse_tags(content, tags)
+            else:
+                output = {}
+
             output['_output'] = content
+            if tools:
+                output['_tool_calls'] = response.choices[0].message.tool_calls
+                output['_message'] = response.choices[0].message
 
             return output
         except Exception as e:
             error = e
-            print(f"Attempt {attempt + 1}: Unexpected error: {e}\nresponse:", response)
+            logger.warning(f"Attempt {attempt + 1}: Unexpected error: {e}")
+            if response:
+                logger.warning(response)
             time.sleep(1)
 
     if error:
