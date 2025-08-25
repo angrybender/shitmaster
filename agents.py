@@ -71,6 +71,7 @@ class BaseAgent:
         ]
 
         agent_step = 1
+        max_skip_command = 3
         while True:
             if agent_step > MAX_ITERATION:
                 logger.warning("MAX_STEP exceed!")
@@ -86,7 +87,11 @@ class BaseAgent:
 
             tool_call_description = None
             current_tool_call = None
-            for tool_call in output['_tool_calls']:
+            tool_calls = output.get('_tool_calls', [])
+            if not tool_calls:
+                tool_calls = []
+
+            for tool_call in tool_calls:
                 tool_call_description = {
                     'function': tool_call.function.name,
                     'id': tool_call.id,
@@ -95,13 +100,28 @@ class BaseAgent:
                 current_tool_call = tool_call
                 break
 
-            if not current_tool_call:
+            if not current_tool_call and (max_skip_command <= 0 or not output['_output']):
                 yield {
                     'message': "Not commands (1), early stop",
                     'type': "error",
                     'exit': True,
                 }
                 break
+            elif not current_tool_call and output['_output']:
+                max_skip_command -= 1
+
+                yield {
+                    'message': output['_output'],
+                    'type': "markdown",
+                    'exit': True,
+                }
+
+                conversation.append({
+                    'role': 'assistant',
+                    'content': output['_output'],
+                })
+
+                continue
 
             self.log(tool_call_description, True)
             conversation.append({
@@ -119,7 +139,7 @@ class BaseAgent:
                 break
             else:
                 yield {
-                    'message': f"Execute command: {tool_call_description['function']}; with argument: {tool_call_description['args'][0]}",
+                    'message': f"🔨 {tool_call_description['function']}: {tool_call_description['args'][0]}",
                     'type': "info",
                     'exit': False,
                 }

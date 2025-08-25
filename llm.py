@@ -51,6 +51,8 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
             )
 
             content = response.choices[0].message.content.strip() if response.choices[0].message.content else ''
+            logger.debug(content)
+
             if len(content) == 0 and tools and not response.choices[0].message.tool_calls:
                 raise Exception("Empty response")
 
@@ -63,6 +65,9 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
             if tools:
                 output['_tool_calls'] = response.choices[0].message.tool_calls
                 output['_message'] = response.choices[0].message
+
+                if not output['_tool_calls']:
+                    output['_tool_calls'] = []
 
             return output
         except Exception as e:
