@@ -82,16 +82,8 @@ class CommandInterpreter:
         source_code = source_file['result']
         source_code = [_.rstrip() for _ in source_code.split("\n")]
 
-        with open('_command_write_diff_find.txt', 'w', encoding='utf8') as f:
-            f.write(str_find)
-        with open('_command_write_diff_replace.txt', 'w', encoding='utf8') as f:
-            f.write(str_replace)
-
         try:
             patched_file = apply_patch("\n".join(source_code), str_find, str_replace)
-            with open('_command_write_diff_patched_file.txt', 'w', encoding='utf8') as f:
-                f.write(patched_file)
-
         except PatchError as e:
             return {'result': f"ERROR: {e}"}
 
