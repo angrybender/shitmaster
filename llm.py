@@ -6,10 +6,30 @@ import time
 from llm_parser import parse_tags
 
 import logging
-logger = logging.getLogger('APP')
 
 # Load environment variables from .env file
 load_dotenv()
+
+# setup logger
+IS_DEBUG = int(os.environ.get('DEBUG', 0)) == 1
+if IS_DEBUG:
+    logger = logging.getLogger('llm_api')
+    logger.setLevel(logging.DEBUG)
+
+    # create file handler which logs even debug messages
+    fh = logging.FileHandler('./conversations_log/full_log.log')
+    fh.setLevel(logging.DEBUG)
+    # create console handler with a higher log level
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.ERROR)
+    # create formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    # add the handlers to the logger
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+else:
+    logger = logging.getLogger('APP')
 
 # Constants for OpenAI API configuration
 API_URL = os.getenv('OPENAI_API_URL')
@@ -38,6 +58,10 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
             }
         ]
 
+    logger.debug("INPUT:")
+    for m in messages:
+        logger.debug(m)
+
     attempts = 5
     response = None
     error = None
@@ -51,7 +75,6 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
             )
 
             content = response.choices[0].message.content.strip() if response.choices[0].message.content else ''
-            logger.debug(content)
 
             if len(content) == 0 and tools and not response.choices[0].message.tool_calls:
                 raise Exception("Empty response")
@@ -68,6 +91,9 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
 
                 if not output['_tool_calls']:
                     output['_tool_calls'] = []
+
+            logger.debug("OUTPUT:")
+            logger.debug(output)
 
             return output
         except Exception as e:
