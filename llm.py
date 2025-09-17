@@ -34,6 +34,7 @@ else:
 # Constants for OpenAI API configuration
 API_URL = os.getenv('OPENAI_API_URL')
 API_KEY = os.getenv('OPENAI_API_KEY')
+API_TIMEOUT = int(os.getenv('OPENAI_API_TIMEOUT'))
 MODEL = os.getenv('MODEL')
 
 MAX_PROMPT_OUTPUT = os.getenv('MAX_PROMPT_OUTPUT', '')
@@ -47,7 +48,7 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
     client = OpenAI(
         api_key=API_KEY,
         base_url=API_URL,
-        timeout=1200
+        timeout=API_TIMEOUT,
     )
 
     if type(messages) is str:

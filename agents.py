@@ -38,6 +38,7 @@ class BaseAgent:
         self.interpreter = None
         self.role = role
         self.log_file = role
+        self.thinking = False
 
     def conversation_filter(self, conversation: list[dict]) -> list[dict]:
         return conversation
@@ -55,7 +56,6 @@ class BaseAgent:
 
     def run(self):
         assert self.instruction, 'Init() s required'
-        executed_commands = []
 
         yield {
             'message': f"start {self.role}...",
@@ -97,8 +97,27 @@ class BaseAgent:
                 break
 
             conversation = self.conversation_filter(conversation)
+
+            if self.thinking:
+                think_output = llm_query(conversation)
+                think_output = think_output.get('_output', '')
+                if think_output and think_output.find('<work_plan>') > -1:
+                    think_output_msg = think_output\
+                                            .replace('<work_plan>', '')\
+                                            .replace('</work_plan>', '')
+                    yield {
+                        'message': think_output_msg,
+                        'type': "markdown",
+                    }
+
+                    conversation.append({
+                        'role': 'system',
+                        'content': think_output
+                    })
+
             output = llm_query(conversation, tools=self.get_tools())
             self.log("============= LLM OUTPUT =============", True)
+            self.log('LLM OUTPUT:\n' + output.get('output', ''), True)
 
             tool_call_description = None
             current_tool_call = None
@@ -187,6 +206,10 @@ class BaseAgent:
 
 
 class AnalyticAgent(BaseAgent):
+    def __init__(self, role: str, system_prompt: str, step_prompt: str):
+        super().__init__(role, system_prompt, step_prompt)
+        self.thinking = True
+
     def get_tools(self) -> list[dict]:
         return analytic_tools
 

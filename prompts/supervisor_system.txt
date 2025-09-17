@@ -22,7 +22,7 @@ After getting report - decide what next step, next agent etc
 Move iterate, step-by-step.
 
 ### For ANALYTIC
-ANALYTIC help you to decide - how work must be executed, create instruction example "find classes in the ... directory wich include code for working with DB and create requirements for complete task %write isolated subtask%"
+ANALYTIC help you to decide - how work must be executed, create instruction example "find classes in the ... directory witch include code for working with DB and create requirements for complete task %write isolated subtask%"
 
 ### For CODER
 Write full instruction what file agent must create/update.
