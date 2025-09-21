@@ -111,7 +111,7 @@ class BaseAgent:
                     }
 
                     conversation.append({
-                        'role': 'system',
+                        'role': 'assistant',
                         'content': think_output
                     })
 
