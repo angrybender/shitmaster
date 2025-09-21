@@ -15,6 +15,17 @@ from prompts.coder_tools import tools as coder_tools
 IDE_MCP_HOST=os.getenv('IDE_MCP_HOST')
 MAX_ITERATION=int(os.getenv('MAX_ITERATION'))
 
+def _parse_tool_arguments(json_data: str):
+    try:
+        return json.loads(json_data)
+    except json.decoder.JSONDecodeError as e:
+        json_data = llm_query(f"fix this JSON: ```{json_data}```\nwrap answer into tag <RESULT>", ['RESULT']).get('RESULT', [''])[0]
+        if not json_data:
+            raise e
+
+        return json.loads(json_data)
+
+
 class BaseAgent:
     def __init__(self, role: str, system_prompt: str, step_prompt: str):
         self.system_prompt = system_prompt
@@ -27,6 +38,9 @@ class BaseAgent:
         self.interpreter = None
         self.role = role
         self.log_file = role
+
+    def conversation_filter(self, conversation: list[dict]) -> list[dict]:
+        return conversation
 
     def get_tools(self) -> list[dict]:
         return []
@@ -71,6 +85,7 @@ class BaseAgent:
         ]
 
         agent_step = 1
+        max_skip_command = 3
         while True:
             if agent_step > MAX_ITERATION:
                 logger.warning("MAX_STEP exceed!")
@@ -81,27 +96,47 @@ class BaseAgent:
                 }
                 break
 
+            conversation = self.conversation_filter(conversation)
             output = llm_query(conversation, tools=self.get_tools())
             self.log("============= LLM OUTPUT =============", True)
 
             tool_call_description = None
             current_tool_call = None
-            for tool_call in output['_tool_calls']:
+            tool_calls = output.get('_tool_calls', [])
+            if not tool_calls:
+                tool_calls = []
+
+            for tool_call in tool_calls:
                 tool_call_description = {
                     'function': tool_call.function.name,
                     'id': tool_call.id,
-                    'args': list(json.loads(tool_call.function.arguments).values()) if tool_call.function.arguments else []
+                    'args': list(_parse_tool_arguments(tool_call.function.arguments).values()) if tool_call.function.arguments else []
                 }
                 current_tool_call = tool_call
                 break
 
-            if not current_tool_call:
+            if not current_tool_call and (max_skip_command <= 0 or not output['_output']):
                 yield {
                     'message': "Not commands (1), early stop",
                     'type': "error",
                     'exit': True,
                 }
                 break
+            elif not current_tool_call and output['_output']:
+                max_skip_command -= 1
+
+                yield {
+                    'message': output['_output'],
+                    'type': "markdown",
+                    'exit': True,
+                }
+
+                conversation.append({
+                    'role': 'assistant',
+                    'content': output['_output'],
+                })
+
+                continue
 
             self.log(tool_call_description, True)
             conversation.append({
@@ -119,7 +154,7 @@ class BaseAgent:
                 break
             else:
                 yield {
-                    'message': f"Execute command: {tool_call_description['function']}; with argument: {tool_call_description['args'][0]}",
+                    'message': f"🔨 {tool_call_description['function']}: {tool_call_description['args'][0]}",
                     'type': "info",
                     'exit': False,
                 }
@@ -158,6 +193,36 @@ class AnalyticAgent(BaseAgent):
 class CoderAgent(BaseAgent):
     def get_tools(self) -> list[dict]:
         return coder_tools
+
+    def conversation_filter(self, conversation: list[dict]) -> list[dict]:
+        last_tool = ''
+        modified_conversation = []
+        for m in conversation:
+            modified_conversation.append(m)
+
+            if 'tool_calls' not in m:
+                continue
+
+            tool = m['tool_calls'][0]
+            _hash = tool.function.name + ':' + tool.function.arguments
+
+            if tool.function.name != 'read_file':
+                last_tool = _hash
+                continue
+
+            if _hash == last_tool:
+                modified_conversation.append({
+                    'role': 'tool',
+                    'tool_call_id': tool.id,
+                    'name': tool.function.name,
+                    'content': 'File has read above!',
+                })
+
+                return modified_conversation
+            else:
+                last_tool = _hash
+
+        return conversation
 
 
 class Agent:

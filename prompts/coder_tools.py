@@ -43,60 +43,39 @@ example:
             }
         }
     },
-# {
-#         "type":"function",
-#         "function":{
-#             "name": "write_diff_file",
-#             "description": "Apply patch to existed file in the SEARCH/REPLACE format.\nUse this command ONLY if:\n1. file more than 100 lines\n2. you edit exists file\n",
-#             "parameters": {
-#                 "type": "object",
-#                 "required": ["path", "patch"],
-#                 "properties": {
-#                     "path": {
-#                         "type": "string",
-#                         "description": "path to file"
-#                     },
-#                     "patch": {
-#                         "type": "string",
-#                         "description":
-# """patch for write to the file, SEARCH/REPLACE block, follow rules:
-# - block begins at:
-# <<<<<<< SEARCH
-# - next, print modified lines from source file, are will search and replace
-# - SEARCH-part MUST be small as possible and unique
-# - every line of source code begin with space char
-# - SEARCH-part CANT be empty
-# - next, print separator of SEARCH и REPLACE parts:
-# =======
-# - next, print lines for replacing, save all tab, spaces, comment, block comments etc
-# - SEARCH/REPLACE ends with:
-# >>>>>>> REPLACE
-# - if need to delete lines - REPLACE part MUST be empty
-# - save all tab, spaces, comment, block comments etc
-# - follow format considering for program language that you prints
-# - DONT put separator before `>>>>>>> REPLACE`
-# - put ALL changed into the ONCE COMMAND for current file.
-#
-# Example:
-# <<<<<<< SEARCH
-#  from flask import Flask
-# =======
-# import math
-# from flask import Flask
-# >>>>>>> REPLACE
-#
-# <<<<<<< SEARCH
-#  class Main:
-#    def method(self, a):
-# =======
-# class Main:
-#   def method(self, a: str):
-# >>>>>>> REPLACE"""
-#                     }
-#                 }
-#             }
-#         }
-#     },
+    {
+        "type": "function",
+        "function": {
+            "name": "replace_code_in_file",
+            "description": "Replace part of code in file. Function locates a specified substring (str_find) in the code and replaces it with the given target string (str_replace).",
+            "parameters": {
+                "type": "object",
+                "required": ["path", "str_find", "str_replace"],
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "path to file"
+                    },
+                    "str_find": {
+                        "type": "string",
+                        "description":
+"""fragment code for replacing, for determinate search - catch 1-2 lines before and after the fragment
+- must be small as possible and unique
+- save all tab, spaces, comment, block comments etc
+- follow format considering for program language that you prints"""
+                    },
+                    "str_replace": {
+                        "type": "string",
+                        "description":
+"""fragment code to replace
+- save all tab, spaces, comment, block comments etc
+- follow format considering for program language that you prints
+- can not be empty"""
+                    }
+                }
+            }
+        }
+    },
     {
         "type":"function",
         "function":{

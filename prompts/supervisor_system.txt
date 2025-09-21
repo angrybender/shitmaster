@@ -26,4 +26,5 @@ ANALYTIC help you to decide - how work must be executed, create instruction exam
 
 ### For CODER
 Write full instruction what file agent must create/update.
-Prefer to update once file by one instruction - you may create new task for CODER agent and do work step-by-stepd.
+Prefer to update once file by one instruction - you may create new task for CODER agent and do work step-by-step.
+Take in mind that all paths MUST relative by project's root.

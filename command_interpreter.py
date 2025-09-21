@@ -74,7 +74,7 @@ class CommandInterpreter:
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
 
-    def _command_write_diff(self, file_path, data):
+    def _command_write_diff(self, file_path, str_find, str_replace):
         source_file = self._command_read(file_path)
         if not source_file['exists']:
             return {'result': "ERROR: file not exist"}
@@ -83,7 +83,7 @@ class CommandInterpreter:
         source_code = [_.rstrip() for _ in source_code.split("\n")]
 
         try:
-            patched_file = apply_patch("\n".join(source_code), data)
+            patched_file = apply_patch("\n".join(source_code), str_find, str_replace)
         except PatchError as e:
             return {'result': f"ERROR: {e}"}
 
@@ -94,24 +94,17 @@ class CommandInterpreter:
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
 
-    def _command_message(self, data) -> dict:
-        return {'result': data, 'output': True}
-
     def execute(self, opcode: str, arguments) -> dict:
         try:
-            if opcode in ['read_file', 'READ', 'RE_READ']:
+            if opcode == 'read_file':
                 return self._command_read(*arguments)
-            elif opcode == 'LIST' or opcode == 'list_in_directory':
+            elif opcode == 'list_in_directory':
                 return self._command_list(*arguments)
-            elif opcode == 'WRITE' or opcode == 'write_file':
+            elif opcode == 'write_file':
                 return self._command_write(*arguments)
-            elif opcode == 'WRITE_DIFF' or opcode == 'write_diff_file':
+            elif opcode == 'replace_code_in_file':
                 return self._command_write_diff(*arguments)
-            elif opcode == 'EXIT':
-                return {'exit': True}
-            elif opcode == 'MESSAGE':
-                return self._command_message(*arguments)
             else:
-                raise Exception(f"Unknown opcode: {opcode}")
+                return {"result": "ERROR: wrong tool name, check tools list and call correct"}
         except TypeError:
-            return {"result": "ERROR: wrong command code/arguments, check you output, fix accordance DSL and try again"}
+            return {"result": "ERROR: wrong command code/arguments, check tools list and call correct"}

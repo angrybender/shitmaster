@@ -231,7 +231,7 @@ class Copilot:
                         agent_complete_report = agent_step['message']
                         agent_step['type'] = 'markdown'
                     elif agent_step['type'] == 'error':
-                        agent_complete_report = 'Agent cant do work, try another approach: add more details, rewrite instruction for agent!', # TODO ???
+                        agent_complete_report = 'Agent cant complete a work, try another approach: add more details, rewrite instruction for agent!' # TODO ???
                         is_agent_completes_work = True
 
                     yield agent_step

@@ -1,85 +1,44 @@
-import pprint
 import re
 
 class PatchError(Exception):
     pass
 
+def apply_patch(source_code: str, str_find: str, str_replace: str) -> str:
+    cnt = source_code.count(str_find)
+    if cnt > 1:
+        raise PatchError("`str_find` contains more than once time in `source_code`")
 
-def apply_patch(source_code, patch):
-    source_code = [(re.sub(r'[\s+]', '', line), line) for line in source_code.split("\n")]
+    if cnt == 1:
+        return source_code.replace(str_find, str_replace)
 
-    # struct of patch block
-    patch_blocks = []
-    patch_blocks_heap = []
-    for line in patch.split("\n"):
-        if line.rstrip() == '<<<<<<< SEARCH':
-            if patch_blocks_heap:
-                patch_blocks.append(patch_blocks_heap)
-                patch_blocks_heap = []
+    source_code = source_code.split("\n")
+    hashed_source = [re.sub(r'[\s+]', '', line) for line in source_code]
+    hashed_str_find = [re.sub(r'[\s+]', '', line) for line in str_find.split("\n")]
 
-            patch_blocks_heap.append(line)
-        elif line.rstrip() == '>>>>>>> REPLACE':
-            patch_blocks.append(patch_blocks_heap)
-            patch_blocks_heap = []
+    cmp_hash_find = " ".join(hashed_str_find)
+    start_line = -1
+    for i, code_line in enumerate(hashed_source):
+        if code_line != hashed_str_find[0]:
+            continue
+
+        cmp_hash_source = " ".join(hashed_source[i:i+len(hashed_str_find)])
+        if cmp_hash_source == cmp_hash_find and start_line >= 0:
+            raise PatchError("`str_find` contains more than once time in `source_code`")
+        elif cmp_hash_source == cmp_hash_find:
+            start_line = i
+
+    if start_line < 0:
+        raise PatchError("`str_find` not contains `source_code`")
+
+    str_replace = str_replace.split("\n")
+    for j in range(0, len(hashed_str_find)):
+        if start_line + j >= len(source_code):
+            source_code.append('')
+
+        if j < len(str_replace):
+            source_code[start_line + j] = str_replace[j]
         else:
-            patch_blocks_heap.append(line)
+            source_code[start_line + j] = None
 
-    if patch_blocks_heap:
-        patch_blocks.append(patch_blocks_heap)
-    patch_blocks = [_[1:] for _ in patch_blocks if [__ for __ in _ if __]]
-
-    if not patch_blocks:
-        raise PatchError("bad patch [1]")
-
-    # search replacing lines
-    last_code_line_search_i = 0
-    replace_blocks = []
-    for i, patch_block in enumerate(patch_blocks):
-        try:
-            divitor = patch_block.index('=======')
-        except:
-            raise PatchError(f"bad patch block [1:{i}]")
-
-        search = patch_block[:divitor]
-        if not search:
-            raise PatchError(f"bad patch block [2:{i}]")
-
-        search = [re.sub(r'[\s+]', '', line) for line in search]
-
-        _search_hash = " ".join(search)
-        for source_i in range(last_code_line_search_i, len(source_code)):
-            hash, _ = source_code[source_i]
-            if hash != search[0]:
-                continue
-
-            _source_hash = [_[0] for _ in source_code[source_i:source_i + len(search)]]
-            if " ".join(_source_hash) == _search_hash:
-                last_code_line_search_i = source_i + 1
-                replace_blocks.append((source_i, len(search), patch_block[divitor + 1:]))
-
-    if not replace_blocks:
-        raise PatchError("bad patch [2]")
-
-    # apply patch:
-    source_code_tree = []
-    for line in source_code:
-        source_code_tree.append([line[1]])
-
-    for start_i, source_cnt, patch_lines in replace_blocks:
-        last_offset_source = -1
-        for i, patch_line in enumerate(patch_lines):
-            if i < source_cnt:
-                source_code_tree[start_i + i] = [patch_line]
-                last_offset_source = start_i + i
-            else:
-                source_code_tree[last_offset_source].append(patch_line)
-
-        if len(patch_lines) < source_cnt:
-            last_offset_source = max(last_offset_source-1, start_i)
-            for i in range(last_offset_source, last_offset_source+source_cnt):
-                source_code_tree[i] = None
-
-    source_code_tree = [_ for _ in source_code_tree if _ is not None]
-    return "\n".join(
-        ["\n".join(block) for block in source_code_tree]
-    )
+    source_code = [_ for _ in source_code if _ is not None]
+    return "\n".join(source_code)

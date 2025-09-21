@@ -1,6 +1,5 @@
 import unittest
 import json
-from itertools import count
 
 from diff_helper import apply_patch
 
@@ -27,68 +26,19 @@ class TestDiffHelper(unittest.TestCase):
 ]"""
 
     def test_1(self):
-        PATCH = """<<<<<<< SEARCH
-    {
-        "name": "John Smith",
-        "date_of_birth": "1985-03-15",
-        "sex": "M",
-        "phone": "+1-555-0101"
-    },
-=======
-    {
-        "name": "John Smith",
-        "date_of_birth": "1985-03-15",
-        "sex": "M",
-        "phone": "+1-555-0101",
-        "region_id": 1
-    },
->>>>>>> REPLACE
+        FIND_STR = '        "name": "John Smith",'
+        REPLACE_STR = '        "name": "John Smith-2",'
 
-<<<<<<< SEARCH
-    {
-        "name": "Emma Wilson",
-        "date_of_birth": "1990-07-22",
-        "sex": "F",
-        "phone": "+1-555-0102"
-    },
-=======
-    {
-        "name": "Emma Wilson",
-        "date_of_birth": "1990-07-22",
-        "sex": "F",
-        "phone": "+1-555-0102",
-        "region_id": 2
-    },
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-    {
-        "name": "Michael Brown",
-        "date_of_birth": "1988-11-30",
-        "sex": "M",
-        "phone": "+1-555-0103"
-    }
-=======
-    {
-        "name": "Michael Brown",
-        "date_of_birth": "1988-11-30",
-        "sex": "M",
-        "phone": "+1-555-0103",
-        "region_id": 3
-    }
->>>>>>> REPLACE"""
-
-        patched = apply_patch(self.CODE_JSON, PATCH)
+        patched = apply_patch(self.CODE_JSON, FIND_STR, REPLACE_STR)
         patched_obj = json.loads(patched)
 
-        self.assertEqual(23, len(patched.split("\n")))
+        self.assertEqual(3, len(patched_obj))
 
         self.assertEqual({
-            "name": "John Smith",
+            "name": "John Smith-2",
             "date_of_birth": "1985-03-15",
             "sex": "M",
             "phone": "+1-555-0101",
-            "region_id": 1
         }, patched_obj[0])
 
         self.assertEqual({
@@ -96,7 +46,6 @@ class TestDiffHelper(unittest.TestCase):
             "date_of_birth": "1990-07-22",
             "sex": "F",
             "phone": "+1-555-0102",
-            "region_id": 2
         }, patched_obj[1])
 
         self.assertEqual({
@@ -104,56 +53,167 @@ class TestDiffHelper(unittest.TestCase):
             "date_of_birth": "1988-11-30",
             "sex": "M",
             "phone": "+1-555-0103",
-            "region_id": 3
         }, patched_obj[2])
 
     def test_2(self):
-        PATCH = """<<<<<<< SEARCH
-    {
-        "name": "John Smith",
-        "date_of_birth": "1985-03-15",
-        "sex": "M",
-        "phone": "+1-555-0101"
-    },
-=======
->>>>>>> REPLACE
+        FIND_STR = '"name": "John Smith",'
+        REPLACE_STR = '        "name": "John Smith-2",'
 
-<<<<<<< SEARCH
-    {
-        "name": "Emma Wilson",
-        "date_of_birth": "1990-07-22",
-        "sex": "F",
-        "phone": "+1-555-0102"
-    },
-=======
-    {
-        "name": "Emma Wilson",
-        "date_of_birth": "1990-07-22",
-        "sex": "F",
-        "phone": "+1-555-0102",
-        "region_id": 2,
-        "region_code": "EN"
-    },
->>>>>>> REPLACE"""
-
-        patched = apply_patch(self.CODE_JSON, PATCH)
+        patched = apply_patch(self.CODE_JSON, FIND_STR, REPLACE_STR)
         patched_obj = json.loads(patched)
 
-        self.assertEqual(16, len(patched.split("\n")))
-        self.assertEqual(2, len(patched_obj))
+        self.assertEqual(3, len(patched_obj))
+
+        self.assertEqual({
+            "name": "John Smith-2",
+            "date_of_birth": "1985-03-15",
+            "sex": "M",
+            "phone": "+1-555-0101",
+        }, patched_obj[0])
 
         self.assertEqual({
             "name": "Emma Wilson",
             "date_of_birth": "1990-07-22",
             "sex": "F",
             "phone": "+1-555-0102",
-            "region_id": 2,
-            "region_code": "EN",
-        }, patched_obj[0])
+        }, patched_obj[1])
 
         self.assertEqual({
             "name": "Michael Brown",
             "date_of_birth": "1988-11-30",
             "sex": "M",
-            "phone": "+1-555-0103"
+            "phone": "+1-555-0103",
+        }, patched_obj[2])
+
+    def test_3(self):
+        FIND_STR = """{
+        "name": "John Smith",
+        "date_of_birth": "1985-03-15",
+        "sex": "M",
+        "phone": "+1-555-0101"
+    },"""
+        REPLACE_STR = """    {
+        "name": "John Smith",
+        "date_of_birth": "1985-03-15",
+        "sex": "M",
+        "phone": "+1-555-0101",
+        "region_id": 2
+    },"""
+
+        patched = apply_patch(self.CODE_JSON, FIND_STR, REPLACE_STR)
+        patched_obj = json.loads(patched)
+
+        self.assertEqual(3, len(patched_obj))
+
+        self.assertEqual({
+            "name": "John Smith",
+            "date_of_birth": "1985-03-15",
+            "sex": "M",
+            "phone": "+1-555-0101",
+            "region_id": 2
+        }, patched_obj[0])
+
+        self.assertEqual({
+            "name": "Emma Wilson",
+            "date_of_birth": "1990-07-22",
+            "sex": "F",
+            "phone": "+1-555-0102",
         }, patched_obj[1])
+
+        self.assertEqual({
+            "name": "Michael Brown",
+            "date_of_birth": "1988-11-30",
+            "sex": "M",
+            "phone": "+1-555-0103",
+        }, patched_obj[2])
+
+    def test_4(self):
+        FIND_STR = """{
+        "name": "John Smith",
+        "date_of_birth": "1985-03-15",
+        "sex": "M",
+        "phone": "+1-555-0101"
+    },"""
+        REPLACE_STR = """    {
+        "name": "John Smith",
+        "date_of_birth": "1985-03-15",
+        "sex": "M"
+    },"""
+
+        patched = apply_patch(self.CODE_JSON, FIND_STR, REPLACE_STR)
+        patched_obj = json.loads(patched)
+
+        self.assertEqual(3, len(patched_obj))
+
+        self.assertEqual({
+            "name": "John Smith",
+            "date_of_birth": "1985-03-15",
+            "sex": "M"
+        }, patched_obj[0])
+
+        self.assertEqual({
+            "name": "Emma Wilson",
+            "date_of_birth": "1990-07-22",
+            "sex": "F",
+            "phone": "+1-555-0102",
+        }, patched_obj[1])
+
+        self.assertEqual({
+            "name": "Michael Brown",
+            "date_of_birth": "1988-11-30",
+            "sex": "M",
+            "phone": "+1-555-0103",
+        }, patched_obj[2])
+
+    def test_5(self):
+        FIND_STR = """{
+        "name": "Michael Brown",
+        "date_of_birth": "1988-11-30",
+        "sex": "M",
+        "phone": "+1-555-0103"
+    }"""
+        REPLACE_STR = """    {
+        "name": "Michael Brown",
+        "date_of_birth": "1988-11-30",
+        "sex": "M",
+        "phone": "+1-555-0103"
+    },
+    {
+        "name": "Jon Dow",
+        "date_of_birth": "1978-11-30",
+        "sex": "M",
+        "phone": "+1-556-0103"
+    }"""
+
+        patched = apply_patch(self.CODE_JSON, FIND_STR, REPLACE_STR)
+        patched_obj = json.loads(patched)
+
+        self.assertEqual(4, len(patched_obj))
+
+        self.assertEqual({
+            "name": "John Smith",
+            "date_of_birth": "1985-03-15",
+            "sex": "M",
+            "phone": "+1-555-0101",
+        }, patched_obj[0])
+
+        self.assertEqual({
+            "name": "Emma Wilson",
+            "date_of_birth": "1990-07-22",
+            "sex": "F",
+            "phone": "+1-555-0102",
+        }, patched_obj[1])
+
+        self.assertEqual({
+            "name": "Michael Brown",
+            "date_of_birth": "1988-11-30",
+            "sex": "M",
+            "phone": "+1-555-0103",
+        }, patched_obj[2])
+
+        self.assertEqual({
+            "name": "Jon Dow",
+            "date_of_birth": "1978-11-30",
+            "sex": "M",
+            "phone": "+1-556-0103",
+        }, patched_obj[3])
