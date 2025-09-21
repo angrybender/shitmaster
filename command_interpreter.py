@@ -105,6 +105,6 @@ class CommandInterpreter:
             elif opcode == 'replace_code_in_file':
                 return self._command_write_diff(*arguments)
             else:
-                raise Exception(f"Unknown opcode: {opcode}")
+                return {"result": "ERROR: wrong tool name, check tools list and call correct"}
         except TypeError:
-            return {"result": "ERROR: wrong command code/arguments, check you output, fix accordance DSL and try again"}
+            return {"result": "ERROR: wrong command code/arguments, check tools list and call correct"}
