@@ -27,7 +27,7 @@ class SimpleChat {
         // Auto-resize textarea
         this.messageInput.addEventListener('input', () => {
             this.messageInput.style.height = 'auto';
-            this.messageInput.style.height = Math.min(this.messageInput.scrollHeight + 5, 200) + 'px';
+            this.messageInput.style.height = (this.messageInput.scrollHeight + 5) + 'px';
         });
     }
 
