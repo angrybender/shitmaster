@@ -2,9 +2,8 @@ from flask import Flask, render_template, request, Response
 import json
 import time
 import queue
-import os, signal
+import os
 from dotenv import load_dotenv
-import threading
 import uuid
 
 import logging
