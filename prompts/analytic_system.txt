@@ -23,7 +23,7 @@ After each step update plan:
 - [ ] ...
 </work_plan>
 mark [x] as has completed task
-dont print any of items of work plan
+dont print any of items outside of work plan tag
 {% endif %}
 
 # Algorithm of you work:
