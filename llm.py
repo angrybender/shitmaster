@@ -36,6 +36,7 @@ API_URL = os.getenv('OPENAI_API_URL')
 API_KEY = os.getenv('OPENAI_API_KEY')
 API_TIMEOUT = int(os.getenv('OPENAI_API_TIMEOUT'))
 MODEL = os.getenv('MODEL')
+REASONING_EFFORT = os.getenv('REASONING_EFFORT')
 
 MAX_PROMPT_OUTPUT = os.getenv('MAX_PROMPT_OUTPUT', '')
 if MAX_PROMPT_OUTPUT:
@@ -59,22 +60,27 @@ def llm_query(messages, tags=None, tools=None) -> dict|None:
             }
         ]
 
-    logger.debug("INPUT:")
+    logger.debug(f"INPUT (with tools: {'Y' if tools else 'N'}):")
     for m in messages:
         logger.debug(m)
 
     attempts = 5
     response = None
     error = None
+
+    options = {
+        'messages': messages,
+        'model': MODEL,
+        'max_tokens': MAX_PROMPT_OUTPUT,
+        'tools': tools,
+    }
+
+    if REASONING_EFFORT:
+        options['reasoning_effort'] = REASONING_EFFORT
+
     for attempt in range(attempts):
         try:
-            response = client.chat.completions.create(
-                messages=messages,
-                model=MODEL,
-                max_tokens=MAX_PROMPT_OUTPUT,
-                tools=tools,
-            )
-
+            response = client.chat.completions.create(**options)
             content = response.choices[0].message.content.strip() if response.choices[0].message.content else ''
 
             if len(content) == 0 and tools and not response.choices[0].message.tool_calls:

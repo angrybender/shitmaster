@@ -1,7 +1,4 @@
-openai
-tqdm
-python-dotenv
-flask
-httpx
-pydantic
-requests
+openai==1.99
+python-dotenv==1.1.1
+flask==3.1.1
+requests==2.32

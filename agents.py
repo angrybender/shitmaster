@@ -1,6 +1,8 @@
 import os
 import json
 
+from jinja2 import Environment, BaseLoader
+
 import logging
 logger = logging.getLogger('APP')
 
@@ -14,6 +16,7 @@ from prompts.coder_tools import tools as coder_tools
 
 IDE_MCP_HOST=os.getenv('IDE_MCP_HOST')
 MAX_ITERATION=int(os.getenv('MAX_ITERATION'))
+DEEPTHINKING_AGENTS=os.getenv('DEEPTHINKING_AGENTS', '').split(',')
 
 def _parse_tool_arguments(json_data: str):
     try:
@@ -27,7 +30,9 @@ def _parse_tool_arguments(json_data: str):
 
 
 class BaseAgent:
-    def __init__(self, role: str, system_prompt: str, step_prompt: str):
+    DEEP_THINK_TAG = 'work_plan'
+
+    def __init__(self, role: str, system_prompt: str, step_prompt: str, thinking: bool):
         self.system_prompt = system_prompt
         self.step_prompt = step_prompt
 
@@ -38,7 +43,7 @@ class BaseAgent:
         self.interpreter = None
         self.role = role
         self.log_file = role
-        self.thinking = False
+        self.thinking = thinking
 
     def conversation_filter(self, conversation: list[dict]) -> list[dict]:
         return conversation
@@ -101,10 +106,10 @@ class BaseAgent:
             if self.thinking:
                 think_output = llm_query(conversation)
                 think_output = think_output.get('_output', '')
-                if think_output and think_output.find('<work_plan>') > -1:
+                if think_output and think_output.find(f'<{self.DEEP_THINK_TAG}>') > -1:
                     think_output_msg = think_output\
-                                            .replace('<work_plan>', '')\
-                                            .replace('</work_plan>', '')
+                                            .replace(f'<{self.DEEP_THINK_TAG}>', '')\
+                                            .replace(f'</{self.DEEP_THINK_TAG}>', '')
                     yield {
                         'message': think_output_msg,
                         'type': "markdown",
@@ -206,10 +211,6 @@ class BaseAgent:
 
 
 class AnalyticAgent(BaseAgent):
-    def __init__(self, role: str, system_prompt: str, step_prompt: str):
-        super().__init__(role, system_prompt, step_prompt)
-        self.thinking = True
-
     def get_tools(self) -> list[dict]:
         return analytic_tools
 
@@ -260,18 +261,21 @@ class Agent:
     def fabric(role) -> BaseAgent:
         assert role in Agent.PROMPTS, f'invalid role: {role}'
 
+        thinking = role in DEEPTHINKING_AGENTS
         system_prompt = Agent.PROMPTS[role]
         with open(system_prompt, 'r', encoding='utf8') as f:
             system_prompt = f.read()
 
+            rtemplate = Environment(loader=BaseLoader).from_string(system_prompt)
+            system_prompt = rtemplate.render(params={
+                'thinking': thinking
+            })
+
         with open(Agent.STEP_PROMPT, 'r', encoding='utf8') as f:
             step_prompt = f.read()
 
+
         if role == 'ANALYTIC':
-            return AnalyticAgent(role, system_prompt, step_prompt)
+            return AnalyticAgent(role, system_prompt, step_prompt, thinking)
         elif role == 'CODER':
-            return CoderAgent(role, system_prompt, step_prompt)
-
-
-
-
+            return CoderAgent(role, system_prompt, step_prompt, False)
