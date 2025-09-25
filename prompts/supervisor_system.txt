@@ -22,9 +22,13 @@ After getting report - decide what next step, next agent etc
 Move iterate, step-by-step.
 
 ### For ANALYTIC
-ANALYTIC help you to decide - how work must be executed, create instruction example "find classes in the ... directory wich include code for working with DB and create requirements for complete task %write isolated subtask%"
+ANALYTIC help you to decide - how work must be executed, create instruction example "find classes in the ... directory witch include code for working with DB and create requirements for complete task %write isolated subtask%"
 
 ### For CODER
 Write full instruction what file agent must create/update.
 Prefer to update once file by one instruction - you may create new task for CODER agent and do work step-by-step.
 Take in mind that all paths MUST relative by project's root.
+Before call CODER sub-agent check:
+- You know what files CODER will be changes and create
+- You know how review is work completed
+- The changes decide user's task, there are not changed what no need

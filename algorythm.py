@@ -186,7 +186,22 @@ class Copilot:
                 current_tool_call = tool_call
                 break
 
-            if not tool_call_description:
+            if not tool_call_description and output['_output']:
+                conversation_log.append({
+                    'role': 'assistant',
+                    'content': output['_output'],
+                })
+                self.log(output['_output'], True)
+
+                yield {
+                    'message': output['_output'],
+                    'type': "markdown",
+                }
+
+                agent_step_counter += 1
+                continue
+
+            if not tool_call_description and not output['_output']:
                 yield {
                     'message': "Agent call error (empty)",
                     'type': "error",
