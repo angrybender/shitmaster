@@ -1,0 +1,151 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0 auto;
+    background-color: #f5f5f5;
+    font-size: 1.1em;
+}
+
+.chat-container {
+    background: white;
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.chat-header {
+    text-align: center;
+    color: #333;
+    padding-bottom: 10px;
+}
+
+.chat-messages {
+    margin-bottom: 20px;
+    background-color: #fafafa;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.user-message {
+    background-color: #007bff;
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.bot-message {
+    background-color: #e9ecef;
+    color: #333;
+    margin-right: auto;
+}
+
+.error-message {
+    background-color: #dc3545;
+    color: white;
+    margin-right: auto;
+}
+
+.input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.message-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 1.1em;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.message-input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.input-hint {
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+}
+
+.status {
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 70%;
+    margin-bottom: 10px;
+    text-align: center;
+}
+.status .project {
+    display: none;
+}
+
+.status.connected {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status.connected .project {
+    display: inline;
+    font-weight: bold;
+    font-size: 12px;
+    font-size: 120%;
+}
+
+.status.disconnected {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status.sending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.timestamp {
+    font-size: 60%;
+    opacity: 0.7;
+    margin-top: 5px;
+    text-align: right;
+}
+
+#user-request {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 20px;
+    background-color: #fafafa;
+    border-radius: 5px;
+
+    font-family: monospace;
+    font-size: 120%;
+    white-space: pre-wrap;
+}
+
+.markdown-message {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+.markdown-message code {
+    font-size: 120%;
+}
+.markdown-message h2 {
+    font-size: 120%;
+}
+.markdown-message h1 {
+    font-size: 130%;
+}
+.markdown-message p {
+    margin-top: 0;
+}
+
+.finished-message {
+    background-color: #d4edda;
+}

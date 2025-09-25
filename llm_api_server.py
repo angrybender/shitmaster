@@ -2,9 +2,9 @@ from flask import Flask, render_template, request, Response
 import json
 import time
 import queue
-import os, signal
+import os
 from dotenv import load_dotenv
-import threading
+import uuid
 
 import logging
 logger = logging.getLogger('APP')
@@ -38,7 +38,11 @@ def process_task(user_request):
 
 @app.route('/')
 def index():
-    return Response(render_template('app.html'), mimetype='text/html', headers={
+    template_app_data = {
+        'session_id': uuid.uuid4()
+    }
+
+    return Response(render_template('app.html', app=template_app_data), mimetype='text/html', headers={
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache',
         'Access-Control-Allow-Origin': '*'
@@ -50,6 +54,7 @@ def send_message():
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
+        user_session_id = data.get('session_id', '').strip()
 
         if not user_message:
             return json.dumps({'status': 'error', 'message': 'Empty message'}), 400
@@ -58,6 +63,7 @@ def send_message():
         message_queue.put({
             'type': 'task',
             'message': user_message,
+            'session': {'id': user_session_id},
             'timestamp': time.time()
         }, timeout=10)
 
@@ -66,7 +72,6 @@ def send_message():
     except Exception as e:
         return json.dumps({'status': 'error', 'message': str(e)}), 500
 
-EVENTS_LOCK = threading.Lock()
 def _get_heartbeat():
     return f"data: {json.dumps({'role': 'system', 'type': 'heartbeat'})}\n\n"
 
@@ -78,33 +83,22 @@ def _get_project_status():
     except:
         return f"data: {json.dumps({'role': 'system', 'type': 'status', 'message': 'unknown project'})}\n\n"
 
-def event_stream():
-    """
-    stream API must consume tasks mandatory
-    :return:
-    """
-    locked = EVENTS_LOCK.acquire(timeout=1)
-    if not locked:
-        logger.debug('kill concurrent process')
-        message_queue.put({'type': 'kill'}, timeout=10)
-        locked = EVENTS_LOCK.acquire(timeout=10)
-
-    if not locked:
-        logger.error("system processes failure")
-        os.kill(os.getpid(), signal.SIGINT)
-
+def event_stream(session: dict):
+    session_id = session['id']
     last_heartbeat_time = time.time()
     heartbeat_time = 30.0
     yield _get_heartbeat()
     yield _get_project_status()
-
 
     while True:
         try:
             # Wait for a message with timeout
             message = message_queue.get(timeout=1)
             if message['type'] == 'task':
-                yield from process_task(message['message'])
+                if message['session']['id'] == session_id:
+                    yield from process_task(message['message'])
+                else:
+                    message_queue.put(message)
             elif message['type'] == 'kill':
                 break
             else:
@@ -122,11 +116,14 @@ def event_stream():
             logging.exception("message")
             break
 
-    EVENTS_LOCK.release()
-
 @app.route('/events')
 def events():
-    return Response(event_stream(), mimetype='text/event-stream', headers={
+    session_id = request.args.get('session_id')
+    session = {
+        'id': session_id
+    }
+
+    return Response(event_stream(session), mimetype='text/event-stream', headers={
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
