@@ -106,7 +106,7 @@ class Copilot:
         self.executed_commands = []
         self.command_state = []
         self.agent_step = 1
-        self.interpreter = CommandInterpreter(IDE_MCP_HOST)
+        self.interpreter = CommandInterpreter(IDE_MCP_HOST, _project_base_path)
 
     def _read_project_structure(self, base_path) -> list:
         result = []

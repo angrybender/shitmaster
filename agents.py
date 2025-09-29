@@ -56,7 +56,7 @@ class BaseAgent:
         self.project_description = manifest['description']
         self.project_structure = manifest['files_structure']
         self.current_open_file = manifest['current_open_file']
-        self.interpreter = CommandInterpreter(IDE_MCP_HOST)
+        self.interpreter = CommandInterpreter(IDE_MCP_HOST, manifest['base_path'])
         self.log_file = log_file
 
     def run(self):

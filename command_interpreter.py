@@ -1,18 +1,25 @@
+import os.path
+
 from diff_helper import apply_patch, PatchError
 import re
 from mcp_helper import tool_call
 import json
 
 class CommandInterpreter:
-    def __init__(self, mcp_host):
+    def __init__(self, mcp_host, project_root):
         self.mcp_host = mcp_host
+        self.project_root = project_root
 
     def _command_read(self, file_path) -> dict:
         content = tool_call(self.mcp_host, 'get_file_text_by_path', {
             'pathInProject': file_path,
+            'projectPath': self.project_root
         })
 
-        if 'status' not in content:
+        if 'error' in content:
+            result = content['error']
+            result = result.replace(self.project_root, '')
+        elif 'status' not in content:
             result = "ERROR: File not exists"
         else:
             result = content['status']
@@ -20,24 +27,14 @@ class CommandInterpreter:
         return {'result': result, 'exists': 'status' in content}
 
     def _command_list(self, path) -> dict:
-        content = tool_call(self.mcp_host, 'list_files_in_folder', {
-            'pathInProject': path,
-        })
+        absolute_path = os.path.join(self.project_root, path)
 
-        if 'error' in content:
-            return {'result': "ERROR: Path not exists"}
+        if not os.path.exists(absolute_path):
+            return {'result': 'ERROR: Path not exists'}
 
         result = []
-
-        content['status'] = content['status'].replace('\\', '/').replace('//', '/')
-        try:
-            content = json.loads(content['status'])
-        except:
-            raise Exception(f"JSON decode: {content['status']}")
-
-        for obj in content:
-            _path = obj['path'].replace('\\', '/')
-            if obj['type'] == 'directory':
+        for _path in os.listdir(str(absolute_path)):
+            if os.path.isdir(_path):
                 _path += '/'
             result.append(f"- {_path}")
 
@@ -70,6 +67,7 @@ class CommandInterpreter:
         content = tool_call(self.mcp_host, method, {
             'pathInProject': file_path,
             'text': data.strip(),
+            'projectPath': self.project_root
         })
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
@@ -90,6 +88,7 @@ class CommandInterpreter:
         content = tool_call(self.mcp_host, 'replace_file_text_by_path', {
             'pathInProject': file_path,
             'text': patched_file.strip(),
+            'projectPath': self.project_root
         })
 
         return {'result': "True" if 'status' in content else "ERROR: " + content['error']}
