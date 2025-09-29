@@ -1,9 +1,11 @@
 import requests
 import os
 import asyncio
+from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
+load_dotenv()
 MCP_CLIENT_TYPE = os.getenv('MCP_CLIENT_TYPE', 'sse')
 assert MCP_CLIENT_TYPE in ['sse', 'legacy'], '`MCP_CLIENT_TYPE` has invalid!'
 
