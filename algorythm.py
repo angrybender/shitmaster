@@ -90,15 +90,10 @@ class Copilot:
 
         manifest = self.get_manifest()
         _project_base_path = manifest['path'][0].strip()
-        _current_open_file = tool_call(IDE_MCP_HOST, 'get_open_in_editor_file_path')['status']
-        if _current_open_file:
-            _current_open_file = get_relative_path(_project_base_path, _current_open_file)
-
         self.manifest = {
             'base_path': _project_base_path,
             'description': manifest['description'][0].strip(),
             'files_structure': self._read_project_structure(_project_base_path),
-            'current_open_file': _current_open_file,
         }
 
         self.output = []
@@ -133,12 +128,8 @@ class Copilot:
 
         self.log(f"RUN. Messages: `{self.instruction}`", False)
 
-        current_open_file = ''
-        if self.manifest['current_open_file']:
-            current_open_file = f"Path of current open file in IDE: `{self.manifest['current_open_file']}`"
         sub_prompt = self.prompt.format(
             project_description=self.manifest['description'],
-            current_file_open=current_open_file,
             project_structure="\n".join([f"- {path}" for path in self.manifest['files_structure']]),
         )
 

@@ -24,7 +24,8 @@ async def _tool_call_sse(path: str, name: str, args: dict = None):
 
 def tool_call(path: str, name: str, args: dict = None) -> dict:
     if MCP_CLIENT_TYPE == 'legacy':
-        del args['projectPath']
+        if args and 'projectPath' in args:
+            del args['projectPath']
         return _tool_call_legacy(path, name, args)
     else:
         if name == 'replace_file_text_by_path' or name == 'create_new_file_with_text':
