@@ -55,8 +55,7 @@ class BaseAgent:
         self.instruction = instruction
         self.project_description = manifest['description']
         self.project_structure = manifest['files_structure']
-        self.current_open_file = manifest['current_open_file']
-        self.interpreter = CommandInterpreter(IDE_MCP_HOST)
+        self.interpreter = CommandInterpreter(IDE_MCP_HOST, manifest['base_path'])
         self.log_file = log_file
 
     def run(self):
@@ -67,12 +66,8 @@ class BaseAgent:
             'type': "info",
         }
 
-        current_open_file = ''
-        if self.current_open_file:
-            current_open_file = f"Path of current open file in IDE: `{self.current_open_file}`"
         sub_prompt = self.step_prompt.format(
             project_description=self.project_description,
-            current_file_open=current_open_file,
             project_structure="\n".join([f"- {path}" for path in self.project_structure]),
         )
 

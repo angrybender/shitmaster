@@ -2,3 +2,4 @@ openai==1.99
 python-dotenv==1.1.1
 flask==3.1.1
 requests==2.32
+mcp==1.15
